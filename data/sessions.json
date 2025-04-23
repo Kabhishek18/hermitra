@@ -1,0 +1,62 @@
+[
+  {
+    "session_id": "1698287758043969496",
+    "title": "Online vs in-person group discussion",
+    "description": "Pros and cons of online and in-person group discussions",
+    "host": "Udhaya C",
+    "host_headline": "A Passionate Engineer",
+    "date": "2023-10-28",
+    "duration": "60 minutes",
+    "format": "online",
+    "topics": ["professional development", "communication", "networking", "remote work"],
+    "skill_level": "all levels"
+  },
+  {
+    "session_id": "2023110501",
+    "title": "Leadership Skills for Women in Tech",
+    "description": "Strategies and techniques for women to advance into leadership roles in technology companies",
+    "host": "Sarah Johnson",
+    "host_headline": "CTO and Leadership Coach",
+    "date": "2023-11-15",
+    "duration": "90 minutes",
+    "format": "online",
+    "topics": ["leadership", "career advancement", "tech industry", "mentorship"],
+    "skill_level": "intermediate"
+  },
+  {
+    "session_id": "2023120301",
+    "title": "Negotiation Tactics for Salary and Promotion",
+    "description": "Effective strategies for negotiating compensation and advancing your career",
+    "host": "Michelle Garcia",
+    "host_headline": "HR Director and Career Advisor",
+    "date": "2023-12-10",
+    "duration": "75 minutes",
+    "format": "in-person",
+    "topics": ["negotiation", "salary", "promotion", "career growth"],
+    "skill_level": "all levels"
+  },
+  {
+    "session_id": "2024010501",
+    "title": "Building a Professional Network",
+    "description": "Creating and maintaining meaningful professional connections in your industry",
+    "host": "Priya Patel",
+    "host_headline": "Networking Strategist",
+    "date": "2024-01-20",
+    "duration": "60 minutes",
+    "format": "hybrid",
+    "topics": ["networking", "relationship building", "professional development", "career growth"],
+    "skill_level": "beginner"
+  },
+  {
+    "session_id": "2024020201",
+    "title": "Overcoming Imposter Syndrome",
+    "description": "Strategies to recognize and overcome imposter syndrome in professional settings",
+    "host": "Dr. Lisa Chen",
+    "host_headline": "Psychologist and Career Coach",
+    "date": "2024-02-15",
+    "duration": "90 minutes",
+    "format": "online",
+    "topics": ["mental health", "self-confidence", "professional development", "psychology"],
+    "skill_level": "all levels"
+  }
+]
