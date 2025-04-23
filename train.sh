@@ -8,10 +8,32 @@ if ! curl -s http://localhost:11434/api/tags > /dev/null; then
   exit 1
 fi
 
+# Process session data if needed
+if [ ! -f data/sessions.json ]; then
+  echo "Processing raw session data..."
+  if [ -f data/raw/herkey.sessions.json ]; then
+    echo "Using existing data/raw/herkey.sessions.json file"
+    ./prepare_herkey_data.py data/raw/herkey.sessions.json
+  else
+    echo "Looking for paste.txt file..."
+    ./prepare_herkey_data.py
+  fi
+  
+  if [ ! -f data/sessions.json ]; then
+    echo "Error: Failed to process session data. Check your input files."
+    exit 1
+  fi
+fi
+
 # Run the example generation script if it hasn't been run yet
 if [ ! -f data/training/examples.jsonl ]; then
   echo "Generating training examples..."
   ./generate_examples.py
+  
+  if [ ! -f data/training/examples.jsonl ]; then
+    echo "Error: Failed to generate training examples."
+    exit 1
+  fi
 fi
 
 # Count training examples
@@ -28,3 +50,6 @@ ollama train asha-bot --modelfile model/Modelfile --data data/training/examples.
 
 echo "Training complete! You can now use your ASHA BOT with:"
 echo "ollama run asha-bot"
+echo ""
+echo "To launch the web interface, run:"
+echo "./streamlit_app/start_enhanced.sh"

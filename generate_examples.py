@@ -28,104 +28,102 @@ def extract_text_from_description(desc_json):
     
     return " ".join(extracted_text)
 
-def parse_session_data(json_file):
-    """Extract useful information from the session JSON."""
+def parse_sessions_data(json_file):
+    """Extract useful information from multiple sessions in the JSON file."""
     try:
         with open(json_file, 'r') as f:
             data = json.load(f)
         
-        session_info = {
-            "session_id": data.get("session_id", ""),
-            "session_title": data.get("session_title", ""),
-            "description": "",
-            "host": [],
-            "category_tags": []
-        }
+        # Handle both array and object formats
+        if isinstance(data, list):
+            sessions_data = data
+        else:
+            # If it's paste.txt format with multiple sessions
+            sessions_data = [data]
+            # Check if there are more sessions after the first object
+            for i in range(10):  # Look for up to 10 more sessions
+                next_char = f.read(1)
+                if next_char == ',':
+                    session_data = json.loads(f.read())
+                    sessions_data.append(session_data)
+                else:
+                    break
         
-        # Extract description content
-        desc = data.get("description", "{}")
-        try:
-            desc_json = json.loads(desc)
-            extracted_text = extract_text_from_description(desc_json)
-            if extracted_text:
-                session_info["description"] = extracted_text
-        except json.JSONDecodeError:
-            # If description isn't valid JSON, use it directly
-            session_info["description"] = desc
+        processed_sessions = []
         
-        # Extract host info
-        hosts = data.get("host_user", [])
-        for host in hosts:
-            host_info = {
-                "username": host.get("username", ""),
-                "headline": host.get("headlines", {}).get("headline1", "")
+        for data in sessions_data:
+            session_info = {
+                "session_id": data.get("session_id", ""),
+                "session_title": data.get("session_title", ""),
+                "description": "",
+                "host": [],
+                "category_tags": []
             }
-            session_info["host"].append(host_info)
+            
+            # Extract description content
+            desc = data.get("description", "{}")
+            try:
+                desc_json = json.loads(desc)
+                extracted_text = extract_text_from_description(desc_json)
+                if extracted_text:
+                    session_info["description"] = extracted_text
+            except json.JSONDecodeError:
+                # If description isn't valid JSON, use it directly
+                session_info["description"] = desc
+            
+            # Extract host info
+            hosts = data.get("host_user", [])
+            for host in hosts:
+                host_info = {
+                    "username": host.get("username", ""),
+                    "headline": host.get("headlines", {}).get("headline1", "")
+                }
+                session_info["host"].append(host_info)
+            
+            # Extract categories and tags
+            session_info["category_tags"].extend(data.get("categories", []))
+            session_info["category_tags"].extend(data.get("tags", []))
+            
+            processed_sessions.append(session_info)
         
-        # Extract categories and tags
-        session_info["category_tags"].extend(data.get("categories", []))
-        session_info["category_tags"].extend(data.get("tags", []))
-        
-        return session_info
+        return processed_sessions
     
     except Exception as e:
         print(f"Error parsing session data: {e}")
-        return {"session_title": "Online vs in-person group discussion", 
-                "description": "Pros and cons of online and in-person group discussions",
-                "host": [{"username": "Udhaya C", "headline": "A Passionate Engineer"}],
-                "category_tags": ["career development", "networking", "professional growth"]}
+        return [{
+            "session_title": "Online vs in-person group discussion", 
+            "description": "Pros and cons of online and in-person group discussions",
+            "host": [{"username": "Udhaya C", "headline": "A Passionate Engineer"}],
+            "category_tags": ["career development", "networking", "professional growth"]
+        }]
 
-def generate_training_examples(session_info):
-    """Create training examples from session data."""
-    examples = []
+def generate_training_examples(sessions_info):
+    """Create training examples from multiple session data."""
+    all_examples = []
     
-    # Get session details
-    title = session_info.get("session_title", "")
-    description = session_info.get("description", "")
-    hosts = [h.get("username", "") for h in session_info.get("host", [])]
-    host_str = ", ".join(hosts) if hosts else "an expert host"
-    
-    # Shorten description if needed
-    short_desc = description[:150] + "..." if len(description) > 150 else description
-    
-    # Example 1: Asking about the session
-    examples.append({
-        "Input": f"Tell me about the session titled '{title}'",
-        "Response": f"The session '{title}' discusses {description}. It is hosted by {host_str}. This session would be valuable for women professionals looking to enhance their knowledge in this area. ASHA - Advancing careers, empowering professionals."
-    })
-    
-    # Example 2: Recommending the session
-    examples.append({
-        "Input": "I'm looking for professional development sessions. Any recommendations?",
-        "Response": f"Based on your interest in professional development, I recommend the session '{title}' hosted by {host_str}. This session covers {short_desc} It's designed to help women professionals advance their careers through practical insights. Would you like to know more about this session? ASHA - Advancing careers, empowering professionals."
-    })
-    
-    # Example 3: Specific to online/in-person discussions
-    if "online" in title.lower() or "in-person" in title.lower():
-        examples.append({
-            "Input": "What are the advantages of online sessions versus in-person ones?",
-            "Response": f"Based on the session '{title}', online sessions offer flexibility, accessibility from anywhere, and often lower costs. However, in-person sessions typically provide better networking opportunities, stronger engagement, and non-verbal communication benefits. The best choice depends on your specific situation and learning preferences. Would you like me to elaborate on either format? ASHA - Advancing careers, empowering professionals."
+    for session_info in sessions_info:
+        # Get session details
+        title = session_info.get("session_title", "")
+        description = session_info.get("description", "")
+        hosts = [h.get("username", "") for h in session_info.get("host", [])]
+        host_str = ", ".join(hosts) if hosts else "an expert host"
+        
+        # Shorten description if needed
+        short_desc = description[:150] + "..." if len(description) > 150 else description
+        
+        # Example 1: Asking about the session
+        all_examples.append({
+            "Input": f"Tell me about the session titled '{title}'",
+            "Response": f"The session '{title}' discusses {description}. It is hosted by {host_str}. This session would be valuable for women professionals looking to enhance their knowledge in this area. ASHA - Advancing careers, empowering professionals."
+        })
+        
+        # Example 2: Recommending the session
+        all_examples.append({
+            "Input": f"I'm looking for sessions like {title}",
+            "Response": f"Based on your interest, I recommend the session '{title}' hosted by {host_str}. This session covers {short_desc} It's designed to help women professionals advance their careers through practical insights. Would you like to know more about this session? ASHA - Advancing careers, empowering professionals."
         })
     
-    # Example 4: Career guidance for women
-    examples.append({
-        "Input": "How can I improve my leadership skills as a woman in tech?",
-        "Response": "To improve your leadership skills as a woman in tech, I recommend: 1) Join professional networks like Women in Tech or AnitaB.org, 2) Find a mentor who understands the challenges women face in tech leadership, 3) Participate in sessions like leadership workshops specifically designed for women in tech, 4) Practice assertive communication techniques, and 5) Seek projects that showcase your leadership abilities. Would you like specific resources on any of these strategies? ASHA - Advancing careers, empowering professionals."
-    })
-    
-    # Example 5: Handling off-topic requests
-    examples.append({
-        "Input": "Can you help me find a restaurant nearby?",
-        "Response": "I'm designed to focus on career guidance and professional development for women. While I can't help with restaurant recommendations, I'd be happy to assist you with finding career resources, professional development sessions like '{title}', or discussing strategies for workplace advancement. Is there a professional development topic I can help you with? ASHA - Advancing careers, empowering professionals."
-    })
-    
-    # Example 6: Adding more general career guidance
-    examples.append({
-        "Input": "What's the best way to negotiate a salary increase?",
-        "Response": "When negotiating a salary increase, I recommend these strategies: 1) Research industry standards for your role and experience level, 2) Document your achievements and contributions, 3) Practice your negotiation pitch, emphasizing the value you bring, 4) Consider the entire compensation package, not just salary, and 5) Approach the conversation with confidence but remain collaborative. Would you like more specific guidance on any of these points? ASHA - Advancing careers, empowering professionals."
-    })
-    
-    return examples
+    return all_examples
 
 def create_additional_examples():
     """Create additional career guidance examples not tied to specific sessions."""
@@ -156,17 +154,23 @@ if __name__ == "__main__":
     os.makedirs("data/training", exist_ok=True)
     os.makedirs("data/processed", exist_ok=True)
     
-    # Parse the session data
-    session_info = parse_session_data("data/raw/sessions.json")
+    # Parse the session data from the herkey.sessions.json file
+    raw_file_path = "data/raw/herkey.sessions.json"
+    if not os.path.exists(raw_file_path):
+        # Fallback to paste.txt if herkey.sessions.json doesn't exist
+        print(f"Warning: {raw_file_path} not found, trying paste.txt")
+        raw_file_path = "paste.txt"
+    
+    sessions_info = parse_sessions_data(raw_file_path)
     
     # Save processed session info
-    with open("data/processed/session_info.json", "w") as f:
-        json.dump(session_info, f, indent=2)
+    with open("data/processed/sessions_info.json", "w") as f:
+        json.dump(sessions_info, f, indent=2)
     
-    print(f"Successfully processed session: {session_info['session_title']}")
+    print(f"Successfully processed {len(sessions_info)} sessions")
     
     # Generate session-specific examples
-    session_examples = generate_training_examples(session_info)
+    session_examples = generate_training_examples(sessions_info)
     
     # Generate additional examples
     additional_examples = create_additional_examples()
@@ -183,3 +187,29 @@ if __name__ == "__main__":
     print(f"- {len(session_examples)} session-specific examples")
     print(f"- {len(additional_examples)} general career guidance examples")
     print("Examples saved to data/training/examples.jsonl")
+    
+    # Generate sessions.json file for the streamlit app
+    streamlined_sessions = []
+    for session in sessions_info:
+        hosts = session.get("host", [])
+        host_name = hosts[0].get("username", "Unknown Host") if hosts else "Unknown Host"
+        host_headline = hosts[0].get("headline", "") if hosts else ""
+        
+        streamlined_session = {
+            "session_id": session.get("session_id", ""),
+            "title": session.get("session_title", ""),
+            "description": session.get("description", ""),
+            "host": host_name,
+            "host_headline": host_headline,
+            "date": "2025-04-23",  # Current date as placeholder
+            "duration": "60 minutes",
+            "format": "online",
+            "topics": session.get("category_tags", ["professional development"]),
+            "skill_level": "all levels"
+        }
+        streamlined_sessions.append(streamlined_session)
+    
+    with open("data/sessions.json", "w") as f:
+        json.dump(streamlined_sessions, f, indent=2)
+    
+    print("Generated sessions.json for the streamlit app")
