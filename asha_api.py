@@ -22,4 +22,4 @@ if __name__ == "__main__":
         question = " ".join(sys.argv[1:])
         print(ask_asha(question))
     else:
-        print("Please provide a question.")
+        print("Please provide a question as an argument.")

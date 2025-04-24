@@ -32,11 +32,31 @@ COLORS = {
 # Load sessions data
 @st.cache_data
 def load_sessions():
-    try:
-        with open("data/sessions.json", "r") as f:
-            return json.load(f)
-    except Exception as e:
-        st.error(f"Error loading sessions: {e}")
+    # Try several possible paths where sessions.json might be located
+    possible_paths = [
+        "../data/sessions.json",
+        "data/sessions.json",
+        "../../data/sessions.json",
+        "../../../data/sessions.json",
+        "./data/sessions.json"
+    ]
+    
+    session_data = None
+    for path in possible_paths:
+        try:
+            st.write(f"Trying to load sessions from: {path}")
+            with open(path, "r") as f:
+                session_data = json.load(f)
+                st.write(f"Successfully loaded sessions from: {path}")
+                break
+        except Exception as e:
+            st.write(f"Could not load from {path}: {e}")
+            continue
+    
+    if session_data:
+        return session_data
+    else:
+        st.error("Could not load sessions from any path, using fallback data")
         # Fallback to a placeholder session if file doesn't exist
         return [{
             "session_id": "1",
@@ -77,34 +97,67 @@ def compute_relevance_score(query, session):
     topics_score = 0
     host_score = 0
     
+    # Initialize variables with default values
+    title_lower = ""
+    description_lower = ""
+    
     # Check title (higher weight)
-    title_lower = session.get("title", "").lower()
-    for term in query_terms:
-        if term in title_lower:
-            # Exact title match gets highest score
-            if term == title_lower:
-                title_score += 10
-            else:
-                title_score += 3
+    title = session.get("title", "")
+    if isinstance(title, str):
+        title_lower = title.lower()
+        for term in query_terms:
+            if term in title_lower:
+                # Exact title match gets highest score
+                if term == title_lower:
+                    title_score += 10
+                else:
+                    title_score += 3
     
     # Check description (medium weight)
-    description_lower = session.get("description", "").lower()
-    for term in query_terms:
-        if term in description_lower:
-            description_score += 2
+    description = session.get("description", "")
+    if isinstance(description, str):
+        description_lower = description.lower()
+        for term in query_terms:
+            if term in description_lower:
+                description_score += 2
     
     # Check topics (medium weight)
     for topic in session.get("topics", []):
-        topic_lower = topic.lower()
-        for term in query_terms:
-            if term in topic_lower:
-                topics_score += 2
+        # Make sure topic is a string before calling lower()
+        if isinstance(topic, str):
+            topic_lower = topic.lower()
+            for term in query_terms:
+                if term in topic_lower:
+                    topics_score += 2
+        elif isinstance(topic, dict) and "name" in topic and topic["name"] is not None:
+            # If topic is a dictionary with a name field that is not None
+            try:
+                topic_lower = str(topic["name"]).lower()
+                for term in query_terms:
+                    if term in topic_lower:
+                        topics_score += 2
+            except (AttributeError, TypeError):
+                # Skip this topic if there's any error processing it
+                continue
     
     # Check host (lower weight)
-    host_lower = session.get("host", "").lower()
-    for term in query_terms:
-        if term in host_lower:
-            host_score += 1
+    host = session.get("host", "")
+    if isinstance(host, str):
+        host_lower = host.lower()
+        for term in query_terms:
+            if term in host_lower:
+                host_score += 1
+    elif isinstance(host, dict):
+        # If host is a dictionary, try to get the username
+        try:
+            if "username" in host and host["username"] is not None:
+                host_lower = str(host["username"]).lower()
+                for term in query_terms:
+                    if term in host_lower:
+                        host_score += 1
+        except (AttributeError, TypeError):
+            # Skip if there's an error processing the host
+            pass
     
     # Combine scores with weights
     total_score = title_score + description_score + topics_score + host_score
@@ -112,9 +165,9 @@ def compute_relevance_score(query, session):
     # Bonus for exact phrase matches (to handle multi-word queries better)
     if len(query_terms) > 1:
         phrase = " ".join(query_terms)
-        if phrase in title_lower:
+        if title_lower and phrase in title_lower:
             total_score += 5
-        if phrase in description_lower:
+        if description_lower and phrase in description_lower:
             total_score += 3
     
     return total_score
@@ -148,11 +201,72 @@ def format_sessions_for_prompt(relevant_sessions):
     sessions_text = "Here are some relevant sessions you can mention:\n\n"
     
     for session in relevant_sessions:
-        sessions_text += f"Session: {session['title']}\n"
-        sessions_text += f"Description: {session['description']}\n"
-        sessions_text += f"Host: {session['host']} ({session.get('host_headline', '')})\n"
-        sessions_text += f"Format: {session.get('format', 'online')}\n"
-        sessions_text += f"Topics: {', '.join(session.get('topics', []))}\n\n"
+        # Safely get values with type checking
+        title = session.get('title', 'Untitled Session')
+        if not isinstance(title, str):
+            title = str(title) if title is not None else 'Untitled Session'
+            
+        # Handle different host formats (string or dict)
+        host = session.get('host', 'Unknown Host')
+        host_headline = ''
+        if isinstance(host, dict):
+            try:
+                if 'username' in host and host['username'] is not None:
+                    host_headline = host.get('headline', '')
+                    if host_headline is None:
+                        host_headline = ''
+                    host = str(host['username'])
+                else:
+                    host = 'Unknown Host'
+            except (TypeError, AttributeError):
+                host = 'Unknown Host'
+        elif not isinstance(host, str):
+            host = str(host) if host is not None else 'Unknown Host'
+        else:
+            host_headline = session.get('host_headline', '')
+            if host_headline is None:
+                host_headline = ''
+        
+        # Safely get headline
+        if not isinstance(host_headline, str):
+            host_headline = str(host_headline) if host_headline is not None else ''
+            
+        # Safely get description
+        description = session.get('description', 'No description available')
+        if not isinstance(description, str):
+            description = str(description) if description is not None else 'No description available'
+            
+        # Safely get format
+        format_val = session.get('format', 'online')
+        if not isinstance(format_val, str):
+            format_val = str(format_val) if format_val is not None else 'online'
+            
+        # Safely handle topics
+        topics = []
+        raw_topics = session.get('topics', [])
+        if isinstance(raw_topics, list):
+            for topic in raw_topics:
+                if isinstance(topic, str):
+                    topics.append(topic)
+                elif isinstance(topic, dict) and 'name' in topic and topic['name'] is not None:
+                    try:
+                        topic_name = str(topic['name'])
+                        topics.append(topic_name)
+                    except (TypeError, AttributeError):
+                        continue
+        
+        # Build session text
+        sessions_text += f"Session: {title}\n"
+        sessions_text += f"Description: {description}\n"
+        sessions_text += f"Host: {host}"
+        if host_headline:
+            sessions_text += f" ({host_headline})"
+        sessions_text += f"\nFormat: {format_val}\n"
+        
+        if topics:
+            sessions_text += f"Topics: {', '.join(topics)}\n\n"
+        else:
+            sessions_text += "Topics: Not specified\n\n"
     
     return sessions_text
 
@@ -459,22 +573,22 @@ with col1:
             ]
         
         # Display suggestion chips
-        col1, col2, col3 = st.columns(3)
-        if col1.button(suggestions[0], key="suggestion_1"):
+        suggestion_cols = st.columns(3)
+        if suggestion_cols[0].button(suggestions[0], key="suggestion_1"):
             st.session_state.messages.append({"role": "user", "content": suggestions[0]})
             with st.spinner("ASHA is thinking..."):
                 response = get_asha_response(suggestions[0])
                 st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
         
-        if col2.button(suggestions[1], key="suggestion_2"):
+        if suggestion_cols[1].button(suggestions[1], key="suggestion_2"):
             st.session_state.messages.append({"role": "user", "content": suggestions[1]})
             with st.spinner("ASHA is thinking..."):
                 response = get_asha_response(suggestions[1])
                 st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
         
-        if col3.button(suggestions[2], key="suggestion_3"):
+        if suggestion_cols[2].button(suggestions[2], key="suggestion_3"):
             st.session_state.messages.append({"role": "user", "content": suggestions[2]})
             with st.spinner("ASHA is thinking..."):
                 response = get_asha_response(suggestions[2])
@@ -521,26 +635,58 @@ with col2:
             featured_sessions = random.sample(sessions, min(3, len(sessions)))
         
         for session in featured_sessions:
+            # Safely get values with type checking
+            title = session.get('title', 'Untitled Session')
+            if not isinstance(title, str):
+                title = str(title) if title is not None else 'Untitled Session'
+                
+            # Handle different host formats (string or dict)
+            host = session.get('host', 'Unknown Host')
+            if isinstance(host, dict) and 'username' in host:
+                host = host['username']
+            elif not isinstance(host, str):
+                host = str(host) if host is not None else 'Unknown Host'
+                
+            # Safely get description
+            description = session.get('description', 'No description available')
+            if not isinstance(description, str):
+                description = str(description) if description is not None else 'No description available'
+            description_display = description[:100] + '...' if len(description) > 100 else description
+            
+            # Safely handle topics
+            topics_html = ""
+            topics = session.get('topics', [])
+            if isinstance(topics, list):
+                for i, topic in enumerate(topics[:3]):
+                    if isinstance(topic, str):
+                        topics_html += f'<span class="topic-tag">{topic}</span>'
+                    elif isinstance(topic, dict) and 'name' in topic:
+                        topics_html += f'<span class="topic-tag">{topic["name"]}</span>'
+            
             st.markdown(f"""
             <div class="session-card">
-                <div class="session-title">{session['title']}</div>
-                <div class="session-host">Hosted by: {session['host']}</div>
-                <div class="session-description">{session['description'][:100]}...</div>
+                <div class="session-title">{title}</div>
+                <div class="session-host">Hosted by: {host}</div>
+                <div class="session-description">{description_display}</div>
                 <div>
-                    {"".join(f'<span class="topic-tag">{topic}</span>' for topic in session.get('topics', [])[:3])}
+                    {topics_html}
                 </div>
             </div>
             """, unsafe_allow_html=True)
     
-    # Optional feedback mechanism
+    # Optional feedback mechanism - FIX: Moved outside of nested columns
     st.markdown('<div class="sidebar-subheader">Feedback</div>', unsafe_allow_html=True)
-    cols = st.columns(2)
-    if cols[0].button("👍 Helpful"):
+    
+    # Create feedback buttons in a row
+    feedback_col1, feedback_col2 = st.columns(2)
+    
+    if feedback_col1.button("👍 Helpful"):
         st.success("Thank you for your feedback!")
     
-    if cols[1].button("👎 Not Helpful"):
-        feedback = st.text_area("What can we improve?", "")
+    if feedback_col2.button("👎 Not Helpful"):
+        st.text_area("What can we improve?", key="feedback_text")
         if st.button("Submit Feedback"):
+            feedback = st.session_state.get("feedback_text", "")
             log_file = "logs/feedback.jsonl"
             with open(log_file, "a") as f:
                 f.write(json.dumps({
