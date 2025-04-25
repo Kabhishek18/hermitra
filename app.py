@@ -14,6 +14,7 @@ from engines.simple_career_guidance import SimpleCareerGuidanceEngine
 from engines.session_recommender import SessionRecommender
 from components.chat_interface import ChatInterface
 from components.session_browser import SessionBrowser
+from components.enhanced_session_search import EnhancedSessionSearch
 from utils.db import save_chat_history
 from utils.ollama import ollama_client
 import config
@@ -26,7 +27,8 @@ def load_career_engine():
     """Load the career guidance engine with caching"""
     # Check if Ollama is available
     if ollama_client.is_available():
-        return CareerGuidanceEngine()
+        engine = CareerGuidanceEngine()
+        return engine
     else:
         st.warning("Ollama service is not available. Using simplified responses.")
         return SimpleCareerGuidanceEngine()
@@ -35,6 +37,11 @@ def load_career_engine():
 def load_session_recommender():
     """Load the session recommender with caching"""
     return SessionRecommender()
+
+@st.cache_resource
+def load_session_search():
+    """Load the session search with caching"""
+    return EnhancedSessionSearch()
 
 def main():
     # Set configuration to reduce memory usage
@@ -58,6 +65,7 @@ def main():
     # Initialize engines using cached functions
     career_engine = load_career_engine()
     session_recommender = load_session_recommender()
+    session_search = load_session_search()
     
     if 'user_id' not in st.session_state:
         st.session_state.user_id = "demo_user"  # In production, use actual user authentication
@@ -66,30 +74,43 @@ def main():
         st.session_state.last_save_time = time.time()
     
     # App title and description - kept minimal
-    st.markdown("# ASHA: Career Guidance Assistant")
-    st.markdown(
-        "Your AI career guidance assistant for women professionals. Ask about career development, "
-        "interviews, leadership, and more."
-    )
+    st.title("ASHA: Career Guidance Assistant")
     
-    # Create columns for chat and recommendations with responsive layout
-    col1, col2 = st.columns([3, 1])
+    # Create tabs for different features
+    tab1, tab2 = st.tabs(["Career Chat", "Search Sessions"])
     
-    # Render chat interface in main column
-    with col1:
-        chat_interface = ChatInterface(career_engine)
-        chat_interface.render()
+    # Tab 1: Main chat interface
+    with tab1:
+        st.markdown(
+            "Your AI career guidance assistant for women professionals. Ask about career development, "
+            "interviews, leadership, and more."
+        )
+        
+        # Create columns for chat and recommendations with responsive layout
+        col1, col2 = st.columns([3, 1])
+        
+        # Render chat interface in main column
+        with col1:
+            chat_interface = ChatInterface(career_engine)
+            chat_interface.render()
+        
+        # Render session browser in second column
+        with col2:
+            session_browser = SessionBrowser(session_recommender)
+            latest_query = None
+            if 'chat_history' in st.session_state and st.session_state.chat_history:
+                user_messages = [msg for msg in st.session_state.chat_history if msg['role'] == 'user']
+                if user_messages:
+                    latest_query = user_messages[-1]['content']
+            session_browser.render(latest_query)
     
-    # Optionally render session browser in sidebar or second column
-    # Commented out to improve performance in initial implementation
-    with col2:
-        session_browser = SessionBrowser(session_recommender)
-        latest_query = None
-        if 'chat_history' in st.session_state and st.session_state.chat_history:
-            user_messages = [msg for msg in st.session_state.chat_history if msg['role'] == 'user']
-            if user_messages:
-                latest_query = user_messages[-1]['content']
-        session_browser.render(latest_query)
+    # Tab 2: Session search
+    with tab2:
+        st.markdown(
+            "Search for sessions by title, host, description, or date. "
+            "Use this feature to find specific sessions in the database."
+        )
+        session_search.render()
     
     # Save chat history periodically instead of after every message
     current_time = time.time()

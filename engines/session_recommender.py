@@ -79,7 +79,21 @@ class SessionRecommender:
     def _build_index(self):
         """Build vector index from processed sessions"""
         try:
+            # Make sure we have data to index
+            if not hasattr(self, 'session_texts') or not self.session_texts:
+                print("No session texts available to build index")
+                return
+                
+            if not hasattr(self, 'processed_sessions') or not self.processed_sessions:
+                print("No processed sessions available to build index")
+                return
+                
+            # Print some debugging info
+            print(f"Building index with {len(self.session_texts)} session texts")
+            
+            # Create the index
             vector_store.create_index(self.session_texts, self.processed_sessions)
+            print("Session index built successfully")
         except Exception as e:
             print(f"Error building session index: {e}")
             import traceback

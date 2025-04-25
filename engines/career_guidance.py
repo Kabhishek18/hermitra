@@ -5,7 +5,10 @@ import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.ollama import generate_text
+from utils.improved_chat_search import ImprovedChatSearchHandler
+from components.enhanced_session_search import EnhancedSessionSearch
 import config
+import traceback
 
 class CareerGuidanceEngine:
     def __init__(self):
@@ -34,6 +37,11 @@ class CareerGuidanceEngine:
             r'\b(movie|film|show|watch)\b',
             r'\b(music|song|band|artist)\b',
         ]
+        
+        # Initialize session search handler
+        self.session_search = EnhancedSessionSearch()
+        self.chat_search_handler = ImprovedChatSearchHandler(self.session_search)
+        print("Career guidance engine initialized with improved chat search")
     
     def is_off_topic(self, query):
         """Quickly check if query is off-topic to avoid LLM call"""
@@ -43,11 +51,42 @@ class CareerGuidanceEngine:
                 return True
         return False
     
+    def is_session_search_query(self, query):
+        """Determine if a query is looking for sessions"""
+        # Common session search keywords and patterns
+        session_keywords = [
+            'session', 'sessions', 'workshop', 'workshops', 
+            'host', 'hosted', 'find', 'search', 'looking for'
+        ]
+        
+        query_lower = query.lower()
+        
+        # Check for explicit session keywords
+        for keyword in session_keywords:
+            if keyword in query_lower:
+                print(f"Detected session search query: '{query}' (matched: '{keyword}')")
+                return True
+                
+        # If no direct match, use the more sophisticated handler
+        if self.chat_search_handler.is_search_query(query):
+            print(f"Detected session search query via pattern matching: '{query}'")
+            return True
+            
+        return False
+    
     def process_query(self, query):
         """Process a user query and return a response."""
         try:
             # Add user query to conversation history
             self.conversation_history.append({"role": "user", "content": query})
+            
+            # Check if this is a session search query
+            if self.is_session_search_query(query):
+                print(f"Processing as session search: '{query}'")
+                # Handle as a session search
+                response = self.chat_search_handler.search_and_format_results(query)
+                self.conversation_history.append({"role": "assistant", "content": response})
+                return response
             
             # Quick check if query is off-topic
             if self.is_off_topic(query):
@@ -84,4 +123,5 @@ class CareerGuidanceEngine:
             return response
         except Exception as e:
             print(f"Error processing query: {e}")
+            traceback.print_exc()
             return "I'm having trouble processing your request. Could you please try asking a simpler question?"

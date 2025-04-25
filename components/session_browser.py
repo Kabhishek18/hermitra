@@ -15,6 +15,12 @@ class SessionBrowser:
         """Render session recommendations with performance optimizations"""
         st.subheader("Recommended Sessions")
         
+        # Add a debug expander
+        with st.expander("Debug Info", expanded=False):
+            st.write(f"Query: {query}")
+            st.write(f"Last query: {self.last_query}")
+            st.write(f"Cache status: {'Using cached results' if query == self.last_query else 'New search needed'}")
+        
         if not query:
             # If no query, display default message or recent sessions
             st.info("Ask a career question to get relevant session recommendations!")

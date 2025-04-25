@@ -23,7 +23,21 @@ class VectorStore:
     def _load_or_create_model(self):
         """Lazy load the model only when needed"""
         if self.model is None:
-            self.model = SentenceTransformer(self.model_name)
+            print(f"Loading sentence transformer model: {self.model_name}")
+            try:
+                self.model = SentenceTransformer(self.model_name)
+                print(f"Successfully loaded model: {self.model_name}")
+            except Exception as e:
+                print(f"Error loading model: {e}")
+                # Fallback to a simpler model if available
+                try:
+                    fallback_model = "paraphrase-MiniLM-L3-v2"  # Smaller model as fallback
+                    print(f"Trying fallback model: {fallback_model}")
+                    self.model = SentenceTransformer(fallback_model)
+                    print(f"Successfully loaded fallback model")
+                except Exception as e2:
+                    print(f"Failed to load fallback model: {e2}")
+                    raise
     
     def create_index(self, texts, items=None):
         """Create a FAISS index from texts with optimizations"""
