@@ -7,3 +7,4 @@ pandas
 numpy
 faiss-cpu
 sentence-transformers
+psutil

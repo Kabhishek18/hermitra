@@ -3,57 +3,96 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.vector_store import VectorStore
+from utils.vector_store import vector_store
 from utils.db import get_all_sessions
 import config
+import json
+import re
+from functools import lru_cache
 
 class SessionRecommender:
     def __init__(self):
-        # Initialize vector store
-        self.vector_store = VectorStore()
-        
-        # Get all sessions
+        # Get all sessions only once during initialization
         self.sessions = get_all_sessions()
         
-        # Build index if sessions exist
+        # Process session data for recommendation
         if self.sessions:
+            self._preprocess_sessions()
             self._build_index()
     
-    def _build_index(self):
-        """Build vector index from sessions data"""
-        if not self.sessions:
-            print("No sessions available to build index")
-            return
-        max_sessions = 5000  # Adjust based on your hardware capabilities
-        if len(self.sessions) > max_sessions:
-            print(f"Limiting to {max_sessions} sessions for performance")
-            self.sessions = self.sessions[:max_sessions]
+    def _extract_description_text(self, description):
+        """Extract plain text from structured description"""
+        # If description is a string that looks like JSON, try to parse it
+        if isinstance(description, str) and description.strip().startswith('{'):
+            try:
+                desc_obj = json.loads(description)
+                # Try to extract text from Lexical JSON structure
+                if 'root' in desc_obj and 'children' in desc_obj['root']:
+                    text_parts = []
+                    self._extract_text_from_lexical(desc_obj['root'], text_parts)
+                    return ' '.join(text_parts)
+            except:
+                # If parsing fails, return the original string
+                pass
+        return str(description)
+    
+    def _extract_text_from_lexical(self, node, text_parts):
+        """Recursively extract text from Lexical editor JSON structure"""
+        if 'children' in node:
+            for child in node['children']:
+                if 'text' in child:
+                    text_parts.append(child['text'])
+                self._extract_text_from_lexical(child, text_parts)
+    
+    def _preprocess_sessions(self):
+        """Preprocess session data to extract and clean text"""
+        processed_sessions = []
         texts = []
-        try:
-            for session in self.sessions:
-                # Extract relevant text from session
-                session_title = session.get('session_title', '')
-                description = session.get('description', '')
-                if isinstance(description, dict) and 'root' in description:
-                    # Handle structured description
-                    description = str(description)
-                session_text = f"{session_title} {description}"
-                texts.append(session_text)
+        
+        for session in self.sessions:
+            # Clean and extract text from session data
+            session_title = session.get('session_title', '')
             
-            # Create index
-            if texts:
-                self.vector_store.create_index(texts, self.sessions)
-                print(f"Built index with {len(texts)} sessions")
-            else:
-                print("No session texts available to build index")
+            # Extract text from description
+            description = session.get('description', '')
+            description_text = self._extract_description_text(description)
+            
+            # Get host information
+            host_info = ""
+            host_users = session.get('host_user', [])
+            if host_users and len(host_users) > 0:
+                host_info = host_users[0].get('username', '')
+            
+            # Combine metadata into searchable text
+            session_text = f"Title: {session_title} Description: {description_text} Host: {host_info}"
+            
+            # Clean the text (remove extra whitespace, etc.)
+            session_text = re.sub(r'\s+', ' ', session_text).strip()
+            
+            # Add to processed data
+            processed_sessions.append(session)
+            texts.append(session_text)
+        
+        self.processed_sessions = processed_sessions
+        self.session_texts = texts
+    
+    def _build_index(self):
+        """Build vector index from processed sessions"""
+        try:
+            vector_store.create_index(self.session_texts, self.processed_sessions)
         except Exception as e:
             print(f"Error building session index: {e}")
             import traceback
             traceback.print_exc()
     
+    @lru_cache(maxsize=64)
     def recommend_sessions(self, query, top_k=3):
-        """Recommend sessions based on a query"""
-        results = self.vector_store.search(query, top_k=top_k)
+        """Recommend sessions based on a query with caching"""
+        # For very short queries, don't do vector search
+        if len(query.strip()) < 3:
+            return self.processed_sessions[:top_k] if self.processed_sessions else []
+        
+        results = vector_store.search(query, top_k=top_k)
         
         # Extract recommended sessions
         recommendations = [result['item'] for result in results]

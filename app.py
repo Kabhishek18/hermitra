@@ -3,6 +3,7 @@ import streamlit as st
 import sys
 import os
 from datetime import datetime
+import time
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -14,74 +15,106 @@ from engines.session_recommender import SessionRecommender
 from components.chat_interface import ChatInterface
 from components.session_browser import SessionBrowser
 from utils.db import save_chat_history
+from utils.ollama import ollama_client
 import config
 
+# Create data directory if it doesn't exist
+os.makedirs(config.DATA_DIR, exist_ok=True)
+
+@st.cache_resource
+def load_career_engine():
+    """Load the career guidance engine with caching"""
+    # Check if Ollama is available
+    if ollama_client.is_available():
+        return CareerGuidanceEngine()
+    else:
+        st.warning("Ollama service is not available. Using simplified responses.")
+        return SimpleCareerGuidanceEngine()
+
+@st.cache_resource
+def load_session_recommender():
+    """Load the session recommender with caching"""
+    return SessionRecommender()
+
 def main():
+    # Set configuration to reduce memory usage
     st.set_page_config(
         page_title=config.APP_NAME,
         page_icon=config.APP_ICON,
-        layout="wide"
+        layout="wide",
+        initial_sidebar_state="collapsed"  # Save screen space
     )
     
-    # Initialize engines
-    if 'career_engine' not in st.session_state:
-        st.session_state.career_engine = SimpleCareerGuidanceEngine()
+    # Add custom CSS to reduce whitespace and optimize UI
+    st.markdown("""
+    <style>
+        .block-container {padding-top: 1rem; padding-bottom: 1rem}
+        .st-emotion-cache-1kyxreq {margin-top: -60px}
+        .st-emotion-cache-r421ms {padding-top: 0.5rem}
+        div.stButton > button {width: 100%}
+    </style>
+    """, unsafe_allow_html=True)
     
-    if 'session_recommender' not in st.session_state:
-        st.session_state.session_recommender = SessionRecommender()
+    # Initialize engines using cached functions
+    career_engine = load_career_engine()
+    session_recommender = load_session_recommender()
     
     if 'user_id' not in st.session_state:
         st.session_state.user_id = "demo_user"  # In production, use actual user authentication
     
-    # App title and description
-    st.title("ASHA: Career Guidance Assistant")
-    st.markdown("""
-    Welcome to ASHA, your personal career guidance assistant specialized in helping women professionals.
-    Ask questions about career development, job search, interviews, leadership, and more!
-    """)
+    if 'last_save_time' not in st.session_state:
+        st.session_state.last_save_time = time.time()
     
-    # Create columns for chat and recommendations
+    # App title and description - kept minimal
+    st.markdown("# ASHA: Career Guidance Assistant")
+    st.markdown(
+        "Your AI career guidance assistant for women professionals. Ask about career development, "
+        "interviews, leadership, and more."
+    )
+    
+    # Create columns for chat and recommendations with responsive layout
     col1, col2 = st.columns([3, 1])
     
-    # Render chat interface
+    # Render chat interface in main column
     with col1:
-        chat_interface = ChatInterface(st.session_state.career_engine)
+        chat_interface = ChatInterface(career_engine)
         chat_interface.render()
     
-    # Render session browser
-    # with col2:
-    #     session_browser = SessionBrowser(st.session_state.session_recommender)
-    #     # Get the most recent user query from chat history if available
-    #     latest_query = None
-    #     if 'chat_history' in st.session_state and st.session_state.chat_history:
-    #         user_messages = [msg for msg in st.session_state.chat_history if msg['role'] == 'user']
-    #         if user_messages:
-    #             latest_query = user_messages[-1]['content']
-        
-    #     session_browser.render(latest_query)
+    # Optionally render session browser in sidebar or second column
+    # Commented out to improve performance in initial implementation
+    with col2:
+        session_browser = SessionBrowser(session_recommender)
+        latest_query = None
+        if 'chat_history' in st.session_state and st.session_state.chat_history:
+            user_messages = [msg for msg in st.session_state.chat_history if msg['role'] == 'user']
+            if user_messages:
+                latest_query = user_messages[-1]['content']
+        session_browser.render(latest_query)
     
-    # Save chat history to database
-    if 'chat_history' in st.session_state and st.session_state.chat_history:
-        # Only save if we have at least one complete exchange
+    # Save chat history periodically instead of after every message
+    current_time = time.time()
+    if ('chat_history' in st.session_state and 
+        st.session_state.chat_history and 
+        current_time - st.session_state.last_save_time > 30):  # Save every 30 seconds
+        
+        # Find last complete exchange
         if len(st.session_state.chat_history) >= 2:
-            last_user_msg = None
-            last_assistant_msg = None
+            # Find the last user and assistant message pair
+            user_msgs = [(i, msg) for i, msg in enumerate(st.session_state.chat_history) if msg['role'] == 'user']
+            assistant_msgs = [(i, msg) for i, msg in enumerate(st.session_state.chat_history) if msg['role'] == 'assistant']
             
-            for msg in reversed(st.session_state.chat_history):
-                if msg['role'] == 'user' and not last_user_msg:
-                    last_user_msg = msg
-                elif msg['role'] == 'assistant' and not last_assistant_msg:
-                    last_assistant_msg = msg
-                
-                if last_user_msg and last_assistant_msg:
-                    break
-            
-            if last_user_msg and last_assistant_msg:
-                save_chat_history(st.session_state.user_id, {
-                    'query': last_user_msg['content'],
-                    'response': last_assistant_msg['content'],
-                    'timestamp': datetime.now()
-                })
+            if user_msgs and assistant_msgs:
+                last_user_idx, last_user_msg = user_msgs[-1]
+                for idx, msg in reversed(assistant_msgs):
+                    if idx > last_user_idx:
+                        save_chat_history(st.session_state.user_id, {
+                            'query': last_user_msg['content'],
+                            'response': msg['content'],
+                            'timestamp': datetime.now()
+                        })
+                        break
+        
+        st.session_state.last_save_time = current_time
 
 if __name__ == "__main__":
     main()
