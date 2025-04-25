@@ -1,0 +1,71 @@
+# ASHA Chatbot .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+asha_env/
+conda_env/
+
+# MongoDB
+data/db/
+mongodb/
+
+# Model files
+*.bin
+*.pt
+*.model
+*.pkl
+faiss_index/
+
+# Streamlit
+.streamlit/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Data files (consider whether you want to include these)
+# Uncomment if you want to exclude these
+# data/sessions.json
+# data/raw/
+
+# Vector store
+*.index
+*.faiss
+
+# Other project-specific exclusions
+*.ipynb_checkpoints/
+temp/
