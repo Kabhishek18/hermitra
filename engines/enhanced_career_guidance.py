@@ -1,4 +1,4 @@
-# asha/engines/career_guidance.py
+# asha/engines/enhanced_career_guidance.py
 import sys
 import os
 import re
@@ -9,9 +9,8 @@ from utils.improved_chat_search import ImprovedChatSearchHandler
 from components.enhanced_session_search import EnhancedSessionSearch
 import config
 import traceback
-import time
 
-class CareerGuidanceEngine:
+class EnhancedCareerGuidanceEngine:
     def __init__(self):
         # Define the system prompt with guidance guardrails
         self.system_prompt = """
@@ -33,9 +32,6 @@ class CareerGuidanceEngine:
         # Track mentioned sessions for follow-up questions
         self.mentioned_sessions = []
         
-        # Add a debug flag
-        self.debug_mode = True
-        
         # Define off-topic patterns for quick classification
         self.off_topic_patterns = [
             r'\b(weather|temperature|forecast)\b',
@@ -48,7 +44,7 @@ class CareerGuidanceEngine:
         # Initialize session search handler
         self.session_search = EnhancedSessionSearch()
         self.chat_search_handler = ImprovedChatSearchHandler(self.session_search)
-        print("Career guidance engine initialized with improved chat search")
+        print("Enhanced career guidance engine initialized with integrated session search")
         
         # Patterns for follow-up questions about sessions
         self.session_followup_patterns = [
@@ -60,11 +56,6 @@ class CareerGuidanceEngine:
             r'when.*?(that|the|this) session',
         ]
     
-    def debug_log(self, message):
-        """Log debug messages if debug mode is enabled"""
-        if self.debug_mode:
-            print(f"[DEBUG] {message}")
-    
     def is_off_topic(self, query):
         """Quickly check if query is off-topic to avoid LLM call"""
         query_lower = query.lower()
@@ -75,10 +66,25 @@ class CareerGuidanceEngine:
     
     def is_session_search_query(self, query):
         """Determine if a query is looking for sessions"""
-        # Check if the chat search handler identifies this as a search query
+        # Common session search keywords and patterns
+        session_keywords = [
+            'session', 'sessions', 'workshop', 'workshops', 
+            'host', 'hosted', 'find', 'search', 'looking for'
+        ]
+        
+        query_lower = query.lower()
+        
+        # Check for explicit session keywords
+        for keyword in session_keywords:
+            if keyword in query_lower:
+                print(f"Detected session search query: '{query}' (matched: '{keyword}')")
+                return True
+                
+        # If no direct match, use the more sophisticated handler
         if self.chat_search_handler.is_search_query(query):
-            self.debug_log(f"Detected session search query: '{query}'")
+            print(f"Detected session search query via pattern matching: '{query}'")
             return True
+            
         return False
     
     def is_session_followup_query(self, query):
@@ -91,7 +97,7 @@ class CareerGuidanceEngine:
         # Check if any follow-up patterns match
         for pattern in self.session_followup_patterns:
             if re.search(pattern, query_lower):
-                self.debug_log(f"Detected session follow-up query: '{query}'")
+                print(f"Detected session follow-up query: '{query}'")
                 return True
                 
         # Check for session-specific references
@@ -104,7 +110,7 @@ class CareerGuidanceEngine:
                 if title_words:
                     title_pattern = '|'.join(title_words)
                     if re.search(r'\b(' + title_pattern + r')\b', query_lower):
-                        self.debug_log(f"Detected reference to session '{title}' in query: '{query}'")
+                        print(f"Detected reference to session '{title}' in query: '{query}'")
                         return True
         
         return False
@@ -180,15 +186,11 @@ class CareerGuidanceEngine:
     def process_query(self, query):
         """Process a user query and return a response."""
         try:
-            start_time = time.time()
-            self.debug_log(f"Processing query: '{query}'")
-            
             # Add user query to conversation history
             self.conversation_history.append({"role": "user", "content": query})
             
             # Check if this is a follow-up question about sessions
             if self.is_session_followup_query(query):
-                self.debug_log("Handling as session follow-up")
                 response = self.handle_session_followup(query)
                 if response:
                     self.conversation_history.append({"role": "assistant", "content": response})
@@ -196,19 +198,12 @@ class CareerGuidanceEngine:
             
             # Check if this is a session search query
             if self.is_session_search_query(query):
-                self.debug_log("Processing as session search")
-                
-                # Store the original search query for debugging
-                original_query = query
-                
-                # Handle as a session search using the chat search handler
+                print(f"Processing as session search: '{query}'")
+                # Handle as a session search
                 response = self.chat_search_handler.search_and_format_results(query)
                 
-                # Store search params for debugging
-                search_params = self.chat_search_handler.extract_search_params(query)
-                self.debug_log(f"Search parameters: {search_params}")
-                
                 # Store referenced sessions for potential follow-up questions
+                search_params = self.chat_search_handler.extract_search_params(query)
                 if search_params:
                     results = self.session_search.search_sessions(search_params)
                     if results:
@@ -216,20 +211,9 @@ class CareerGuidanceEngine:
                         self.mentioned_sessions = results[:5] + self.mentioned_sessions
                         # Limit to prevent excessive growth
                         self.mentioned_sessions = self.mentioned_sessions[:10]
-                        self.debug_log(f"Added {len(results[:5])} sessions to mentioned_sessions")
-                    else:
-                        self.debug_log("No sessions found for search")
                 
-                # If the response contains session information, add it to the conversation history
-                if "session" in response.lower() or "host" in response.lower():
-                    self.debug_log("Response contains session information, adding to history")
-                    self.conversation_history.append({"role": "assistant", "content": response})
-                    end_time = time.time()
-                    self.debug_log(f"Query processing completed in {end_time - start_time:.2f} seconds")
-                    return response
-                else:
-                    # If no session-specific response, treat as a regular query
-                    self.debug_log("No session-specific response, treating as regular query")
+                self.conversation_history.append({"role": "assistant", "content": response})
+                return response
             
             # Quick check if query is off-topic
             if self.is_off_topic(query):
@@ -260,11 +244,43 @@ class CareerGuidanceEngine:
                 temperature=0.6  # Slightly reduced for more deterministic responses
             )
             
+            # Check if the response should include session recommendations
+            # For career-related queries that don't explicitly ask for sessions but could benefit
+            # from session recommendations
+            should_recommend = False
+            career_keywords = ['career', 'job', 'professional', 'skill', 'leadership', 'development',
+                              'interview', 'resume', 'networking', 'mentor', 'transition']
+            
+            for keyword in career_keywords:
+                if keyword in query.lower():
+                    should_recommend = True
+                    break
+            
+            if should_recommend:
+                # Get related sessions
+                recommendations = self.session_search.search_sessions({'description': query})[:2]
+                
+                if recommendations:
+                    # Update mentioned sessions
+                    self.mentioned_sessions = recommendations + self.mentioned_sessions
+                    self.mentioned_sessions = self.mentioned_sessions[:10]
+                    
+                    # Add session recommendation
+                    response += "\n\n**You might also be interested in these sessions:**\n\n"
+                    for session in recommendations:
+                        title = session.get('session_title', 'Untitled Session')
+                        host_name = "Unknown Host"
+                        host_users = session.get('host_user', [])
+                        if host_users and len(host_users) > 0:
+                            host_name = host_users[0].get('username', 'Unknown Host')
+                        
+                        response += f"- **{title}** (Host: {host_name})\n"
+                    
+                    response += "\nYou can ask me for more details about any of these sessions."
+            
             # Add response to conversation history
             self.conversation_history.append({"role": "assistant", "content": response})
             
-            end_time = time.time()
-            self.debug_log(f"Query processing completed in {end_time - start_time:.2f} seconds")
             return response
         except Exception as e:
             print(f"Error processing query: {e}")
