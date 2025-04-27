@@ -3,10 +3,13 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import os
+import sys
 import pickle
-import config
-import hashlib
 import time
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 
 class VectorStore:
     def __init__(self, model_name=config.VECTOR_MODEL):
@@ -14,13 +17,12 @@ class VectorStore:
         self.model = None  # Lazy loading
         self.index = None
         self.items = []
-        self.index_file = os.path.join(config.DATA_DIR, "vector_index.pkl")
+        self.index_file = config.VECTOR_INDEX_PATH
         
         # Try to load existing index
-        self._load_or_create_model()
         self.load(self.index_file)
     
-    def _load_or_create_model(self):
+    def _load_model(self):
         """Lazy load the model only when needed"""
         if self.model is None:
             print(f"Loading sentence transformer model: {self.model_name}")
@@ -40,81 +42,78 @@ class VectorStore:
                     raise
     
     def create_index(self, texts, items=None):
-        """Create a FAISS index from texts with optimizations"""
-        self._load_or_create_model()
+        """Create a FAISS index from texts"""
+        # Load model if not already loaded
+        self._load_model()
         
-        # Calculate a hash of the input texts to detect changes
-        hash_val = hashlib.md5(str(texts).encode()).hexdigest()
-        hash_file = os.path.join(config.DATA_DIR, "vector_index.hash")
-        
-        # Check if we already have an index with this hash
-        if os.path.exists(hash_file) and os.path.exists(self.index_file):
-            with open(hash_file, 'r') as f:
-                if f.read() == hash_val:
-                    print("Skipping index creation - no changes detected")
-                    return
-        
-        print(f"Creating new index with {len(texts)} items")
+        print(f"Creating index with {len(texts)} items")
+        start_time = time.time()
         
         # Process in batches to reduce memory usage
-        batch_size = 128
+        batch_size = config.BATCH_SIZE
         all_embeddings = []
         
+        total_batches = (len(texts) + batch_size - 1) // batch_size
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i+batch_size]
+            print(f"Processing batch {i//batch_size + 1}/{total_batches}")
+            
             batch_embeddings = self.model.encode(
                 batch_texts, 
-                show_progress_bar=True,
+                show_progress_bar=False,
                 convert_to_numpy=True
             )
             all_embeddings.append(batch_embeddings)
-            # Optional: Allow CPU to cool down between batches
-            time.sleep(0.1)
         
         embeddings = np.vstack(all_embeddings)
-        
-        # Create a more efficient index for faster search
         dimension = embeddings.shape[1]
         
-        # Use IVF index for faster search with small accuracy trade-off
+        # Create appropriate index based on dataset size
         if len(texts) > 1000:
-            # Number of clusters - rule of thumb: sqrt(n) where n is dataset size
-            n_clusters = min(int(np.sqrt(len(texts))), 256)
+            # For larger datasets, use IVF index
+            n_clusters = min(int(4 * np.sqrt(len(texts))), 256)
             quantizer = faiss.IndexFlatL2(dimension)
             self.index = faiss.IndexIVFFlat(quantizer, dimension, n_clusters)
+            
+            # Train the index
+            print(f"Training IVF index with {n_clusters} clusters")
             self.index.train(embeddings)
+            self.index.nprobe = min(16, n_clusters // 4)  # Balance performance vs accuracy
         else:
             # For smaller datasets, use flat index
+            print("Using flat index for small dataset")
             self.index = faiss.IndexFlatL2(dimension)
         
+        # Add vectors to index
+        print("Adding vectors to index")
         self.index.add(embeddings.astype('float32'))
         
         # Store original items
         self.items = items if items else texts
         
-        # Save the index hash
-        os.makedirs(os.path.dirname(hash_file), exist_ok=True)
-        with open(hash_file, 'w') as f:
-            f.write(hash_val)
-        
         # Save the index
         self.save(self.index_file)
+        
+        elapsed_time = time.time() - start_time
+        print(f"Index creation completed in {elapsed_time:.2f} seconds")
     
     def search(self, query, top_k=5):
         """Search the index for similar items"""
-        if not self.index:
+        if not self.index or not self.items:
             return []
         
-        self._load_or_create_model()
+        # Load model if not already loaded
+        self._load_model()
         
         # Generate query embedding
         query_embedding = self.model.encode([query])
         
-        # Search for similar items
+        # Configure search parameters
         if isinstance(self.index, faiss.IndexIVFFlat):
-            # Set number of probes to search (more probes = more accurate but slower)
-            self.index.nprobe = 4
+            # For IVF, set number of clusters to search
+            self.index.nprobe = min(16, self.index.nlist // 4)
         
+        # Search for similar items
         distances, indices = self.index.search(
             np.array(query_embedding).astype('float32'), 
             k=min(top_k, len(self.items))
@@ -122,7 +121,10 @@ class VectorStore:
         
         # Get results
         results = []
-        for idx, distance in zip(indices[0], distances[0]):
+        for i in range(len(indices[0])):
+            idx = indices[0][i]
+            distance = distances[0][i]
+            
             if idx >= 0 and idx < len(self.items):  # Check for valid index
                 results.append({
                     'item': self.items[idx],
@@ -144,6 +146,7 @@ class VectorStore:
                     'index': faiss.serialize_index(self.index),
                     'items': self.items
                 }, f)
+            print(f"Saved vector store to {path}")
             return True
         except Exception as e:
             print(f"Error saving vector store: {e}")
@@ -152,6 +155,7 @@ class VectorStore:
     def load(self, path):
         """Load the vector store from disk"""
         if not os.path.exists(path):
+            print(f"No existing index found at {path}")
             return False
         
         try:

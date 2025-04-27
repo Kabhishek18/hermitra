@@ -2,8 +2,8 @@
 import streamlit as st
 import sys
 import os
-from datetime import datetime
 import time
+from datetime import datetime
 import traceback
 
 # Add the project root to the Python path
@@ -11,9 +11,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import modules
 from engines.career_guidance import CareerGuidanceEngine
-from engines.simple_career_guidance import SimpleCareerGuidanceEngine
+from engines.session_recommender import SessionRecommender
 from components.chat_interface import ChatInterface
-from components.enhanced_session_search import EnhancedSessionSearch
 from utils.db import save_chat_history
 from utils.ollama import ollama_client
 import config
@@ -21,62 +20,49 @@ import config
 # Create data directory if it doesn't exist
 os.makedirs(config.DATA_DIR, exist_ok=True)
 
-# Enable debug logging
-DEBUG_MODE = True
-
-def debug_log(message):
-    """Log debug messages if debug mode is enabled"""
-    if DEBUG_MODE:
-        print(f"[APP DEBUG] {message}")
-
 @st.cache_resource
 def load_career_engine():
     """Load the career guidance engine with caching"""
-    debug_log("Initializing career guidance engine")
+    print("Initializing career guidance engine")
     try:
         # Check if Ollama is available
         if ollama_client.is_available():
-            debug_log("Ollama service is available, using CareerGuidanceEngine")
+            print("Ollama service is available")
             engine = CareerGuidanceEngine()
             return engine
         else:
-            debug_log("Ollama service is not available, using SimpleCareerGuidanceEngine")
-            st.warning("Ollama service is not available. Using simplified responses.")
-            return SimpleCareerGuidanceEngine()
+            print("Ollama service is not available")
+            st.warning("Ollama service is not available. Some functionality may be limited.")
+            return CareerGuidanceEngine()  # Still return the engine, it will handle errors gracefully
     except Exception as e:
-        debug_log(f"Error initializing career engine: {e}")
+        print(f"Error initializing career engine: {e}")
         traceback.print_exc()
-        st.error("Error initializing career guidance engine. Using simplified responses.")
-        return SimpleCareerGuidanceEngine()
+        st.error("Error initializing career guidance engine. Some functionality may be limited.")
+        return CareerGuidanceEngine()  # Return basic engine
 
 @st.cache_resource
-def load_session_search():
-    """Load the session search with caching"""
-    debug_log("Initializing enhanced session search")
+def load_session_recommender():
+    """Load the session recommender with caching"""
+    print("Initializing session recommender")
     try:
-        search = EnhancedSessionSearch()
-        # Check if sessions were loaded
-        if hasattr(search, 'sessions'):
-            debug_log(f"Session search initialized with {len(search.sessions)} sessions")
-        else:
-            debug_log("Session search initialized but no sessions found")
-        return search
+        recommender = SessionRecommender()
+        return recommender
     except Exception as e:
-        debug_log(f"Error initializing session search: {e}")
+        print(f"Error initializing session recommender: {e}")
         traceback.print_exc()
-        st.error("Error initializing session search. Some features may not work properly.")
+        st.error("Error initializing session recommender. Session search may not work properly.")
         return None
 
 def main():
-    # Set configuration to reduce memory usage
+    # Set configuration
     st.set_page_config(
         page_title=config.APP_NAME,
         page_icon=config.APP_ICON,
         layout="wide",
-        initial_sidebar_state="collapsed"  # Save screen space
+        initial_sidebar_state="collapsed"
     )
     
-    # Add custom CSS to reduce whitespace and optimize UI
+    # Add custom CSS
     st.markdown("""
     <style>
         .block-container {padding-top: 1rem; padding-bottom: 1rem}
@@ -95,37 +81,13 @@ def main():
         .session-card h4 {
             margin-top: 0;
         }
-        .session-card:hover {
-            border-color: #e0e0e0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
     </style>
     """, unsafe_allow_html=True)
     
-    # Debug sidebar
-    if DEBUG_MODE:
-        with st.sidebar:
-            st.title("Debug Controls")
-            if st.button("Clear Chat History"):
-                if 'chat_history' in st.session_state:
-                    st.session_state.chat_history = []
-                if 'last_query' in st.session_state:
-                    st.session_state.last_query = ""
-                st.session_state.is_processing = False
-                st.session_state.retry_count = 0
-                st.success("Chat history cleared!")
-                
-            if st.button("Reset Session State"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.success("Session state reset!")
-                st.rerun()
-    
-    # Initialize engines using cached functions
+    # Initialize engines
     try:
-        debug_log("Loading career engine and session search")
         career_engine = load_career_engine()
-        session_search = load_session_search()
+        session_recommender = load_session_recommender()
         
         if 'user_id' not in st.session_state:
             st.session_state.user_id = "demo_user"  # In production, use actual user authentication
@@ -133,11 +95,11 @@ def main():
         if 'last_save_time' not in st.session_state:
             st.session_state.last_save_time = time.time()
         
-        # App title and description - kept minimal
+        # App title and description
         st.title("ASHA: Career Guidance Assistant")
         
         # Create tabs for different features
-        tab1, tab2 = st.tabs(["Career Chat", "Advanced Session Search"])
+        tab1, tab2 = st.tabs(["Career Chat", "About ASHA"])
         
         # Tab 1: Main chat interface with integrated session search
         with tab1:
@@ -146,28 +108,55 @@ def main():
                 "interviews, leadership, or find relevant sessions - all in one conversation."
             )
             
-            # Create a single-column layout focusing on the chat experience
-            chat_interface = ChatInterface(career_engine)
+            # Create chat interface
+            chat_interface = ChatInterface(career_engine, session_recommender)
             chat_interface.render()
         
-        # Tab 2: Advanced session search
+        # Tab 2: About ASHA
         with tab2:
-            st.markdown(
-                "Search for sessions by title, host, description, or date. "
-                "Use this feature to find specific sessions in the database."
-            )
-            if session_search:
-                session_search.render()
-            else:
-                st.error("Session search is not available. Please restart the application.")
+            st.markdown("""
+            ## About ASHA
+            
+            ASHA is an AI-powered career guidance chatbot specifically designed for women professionals. 
+            The solution combines personalized career guidance with community engagement features through a session recommendation system.
+            
+            ### Key Features
+            
+            #### Personalized Career Guidance
+            - Resume review and optimization recommendations
+            - Interview preparation and confidence-building techniques
+            - Salary negotiation strategies specifically for women
+            - Career transition pathways with skills gap analysis
+            - Leadership development advice for women professionals
+            
+            #### Session Recommendation System
+            - Integration with women's professional community events
+            - Personalized recommendations based on career goals and interests
+            - Access to recorded sessions and learning resources
+            - Connection to mentorship opportunities and networking events
+            
+            ### Getting Started
+            
+            1. **Ask career questions** - Get guidance on interviews, promotions, leadership development, and more
+            2. **Find relevant sessions** - Just ask "Find sessions about leadership" or "Sessions by [host name]"
+            3. **Get recommendations** - ASHA will recommend relevant sessions based on your career interests
+            
+            ### Technical Information
+            
+            ASHA runs locally on your machine using:
+            - Ollama with the Mistral LLM model
+            - MongoDB for session data
+            - FAISS for semantic search
+            - Streamlit for the user interface
+            """)
         
-        # Save chat history periodically instead of after every message
+        # Save chat history periodically
         current_time = time.time()
         if ('chat_history' in st.session_state and 
             st.session_state.chat_history and 
             current_time - st.session_state.last_save_time > 30):  # Save every 30 seconds
             
-            debug_log("Saving chat history to database")
+            print("Saving chat history to database")
             # Find last complete exchange
             if len(st.session_state.chat_history) >= 2:
                 # Find the last user and assistant message pair
@@ -184,15 +173,15 @@ def main():
                                     'response': msg['content'],
                                     'timestamp': datetime.now()
                                 })
-                                debug_log("Chat history saved successfully")
+                                print("Chat history saved successfully")
                             except Exception as e:
-                                debug_log(f"Error saving chat history: {e}")
+                                print(f"Error saving chat history: {e}")
                             break
             
             st.session_state.last_save_time = current_time
             
     except Exception as e:
-        debug_log(f"Error in main app: {e}")
+        print(f"Error in main app: {e}")
         traceback.print_exc()
         st.error("An error occurred in the application. Please try refreshing the page or contact support.")
 

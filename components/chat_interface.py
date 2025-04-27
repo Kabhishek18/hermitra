@@ -3,73 +3,67 @@ import streamlit as st
 from datetime import datetime
 import re
 import time
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class ChatInterface:
-    def __init__(self, career_engine):
+    def __init__(self, career_engine, session_recommender=None):
         self.career_engine = career_engine
-        # Enable debug mode
-        self.debug_mode = True
-    
-    def debug_log(self, message):
-        """Log debug messages if debug mode is enabled"""
-        if self.debug_mode:
-            print(f"[CHAT INTERFACE DEBUG] {message}")
+        self.session_recommender = session_recommender
     
     def _format_session_links(self, message):
         """Convert session URLs to clickable links and highlight session titles"""
-        # First, wrap any URLs in proper markdown links
+        # Wrap URLs in proper markdown links
         url_pattern = r'(https?://[^\s]+)'
         message = re.sub(url_pattern, r'[\1](\1)', message)
         
-        # Then, highlight session titles with bold formatting
+        # Highlight session titles with bold formatting
         title_pattern = r'\*\*([^*]+?)\*\*'
         message = re.sub(title_pattern, r'**\1**', message)
         
         return message
     
     def _detect_session_content(self, message):
-        """Detect if a message contains session information and format it accordingly"""
+        """Detect if a message contains session information"""
         session_indicators = [
             "session", "sessions", "host", 
             "📅 Date:", "👤 Host:", "⏱️ Duration:", 
-            "matching your criteria", "scheduled for"
+            "matching your criteria", "scheduled for",
+            "found", "might interest you"
         ]
         
-        # Check for session indicators
         for indicator in session_indicators:
             if indicator.lower() in message.lower():
                 return True
                 
         return False
     
-    def _check_response_content(self, response, query):
-        """Check if response seems inappropriate for the query"""
-        # Check if this seems like a session search query
-        is_session_query = False
-        session_search_indicators = [
-            r'\bby\s+[a-zA-Z]+', 
-            r'session.*by', 
-            r'sessions?\s+with', 
-            r'find.*sessions'
-        ]
-        
-        for pattern in session_search_indicators:
-            if re.search(pattern, query.lower()):
-                is_session_query = True
-                break
-        
-        # If it seems like a session query but response doesn't contain session info
-        if is_session_query and not self._detect_session_content(response):
-            self.debug_log(f"WARNING: Query '{query}' seems like a session query, but response doesn't contain session info")
-            self.debug_log(f"Response: {response[:100]}...")
-            return False
+    def _process_session_search(self, query):
+        """Process a session search query if session recommender is available"""
+        if not self.session_recommender:
+            return None
             
-        return True
+        # Extract search parameters
+        search_params = self.session_recommender.extract_search_params_from_query(query)
+        
+        if not search_params:
+            # If no parameters detected, use the query for vector search
+            recommended_sessions = self.session_recommender.recommend_sessions(query, top_k=5)
+        else:
+            # Perform filtered search
+            recommended_sessions = self.session_recommender.search_sessions(search_params)
+        
+        # Format the results
+        if recommended_sessions:
+            return self.session_recommender.format_session_recommendations(recommended_sessions, query)
+        else:
+            return "I couldn't find any sessions matching your criteria. Could you try a different search term or topic?"
     
     def render(self):
         """Render the chat interface with optimizations"""
-        st.subheader("Career Guidance Chat")
-        
         # Initialize session state variables if not present
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
@@ -79,9 +73,6 @@ class ChatInterface:
             
         if 'last_query' not in st.session_state:
             st.session_state.last_query = ""
-            
-        if 'retry_count' not in st.session_state:
-            st.session_state.retry_count = 0
         
         # Function to handle form submission - prevents double submissions
         def handle_submit():
@@ -109,29 +100,15 @@ class ChatInterface:
             last_msg = st.session_state.chat_history[-1]
             if last_msg['role'] == 'user':
                 with st.spinner("ASHA is thinking..."):
-                    self.debug_log(f"Processing query: '{last_msg['content']}'")
-                    start_time = time.time()
+                    query = last_msg['content']
                     
-                    # Generate response
-                    response = self.career_engine.process_query(last_msg['content'])
-                    
-                    # Check if response seems appropriate for query
-                    response_ok = self._check_response_content(response, last_msg['content'])
-                    
-                    # Log processing time
-                    end_time = time.time()
-                    self.debug_log(f"Query processed in {end_time - start_time:.2f} seconds")
-                    
-                    # If response doesn't seem appropriate and we haven't tried too many times
-                    if not response_ok and st.session_state.retry_count < 2:
-                        self.debug_log("Response doesn't seem appropriate, retrying...")
-                        st.session_state.retry_count += 1
-                        # Don't add to history, leave processing as true, and return to retry
-                        time.sleep(1)  # Brief pause to avoid rapid retries
-                        return
-                    
-                    # Reset retry count
-                    st.session_state.retry_count = 0
+                    # Check if this is a session search query
+                    if self.session_recommender and self.career_engine.is_session_search_query(query):
+                        # Process as session search
+                        response = self._process_session_search(query)
+                    else:
+                        # Process as regular career guidance query
+                        response = self.career_engine.process_query(query)
                 
                 # Add assistant message to history
                 st.session_state.chat_history.append({
@@ -200,35 +177,10 @@ class ChatInterface:
                 </style>
                 <div style="margin-top: 8px;">
                 <span onclick="document.querySelector('[data-testid=\\'stFormTextInput\\'] input').value='Find leadership development sessions'; document.querySelector('[data-testid=\\'stForm\\'] button').click();" class="suggestion-btn">Leadership sessions</span>
-                <span onclick="document.querySelector('[data-testid=\\'stFormTextInput\\'] input').value='Sessions by Suchitra Jampal'; document.querySelector('[data-testid=\\'stForm\\'] button').click();" class="suggestion-btn">By Suchitra Jampal</span>
-                <span onclick="document.querySelector('[data-testid=\\'stFormTextInput\\'] input').value='Upcoming sessions'; document.querySelector('[data-testid=\\'stForm\\'] button').click();" class="suggestion-btn">Upcoming sessions</span>
+                <span onclick="document.querySelector('[data-testid=\\'stFormTextInput\\'] input').value='Sessions by Marissa'; document.querySelector('[data-testid=\\'stForm\\'] button').click();" class="suggestion-btn">By Marissa</span>
+                <span onclick="document.querySelector('[data-testid=\\'stFormTextInput\\'] input').value='How to prepare for a job interview?'; document.querySelector('[data-testid=\\'stForm\\'] button').click();" class="suggestion-btn">Interview tips</span>
                 </div>
                 """, unsafe_allow_html=True)
-                
-        # Add a debug section if in debug mode
-        if self.debug_mode and st.sidebar.checkbox("Show Debug Info"):
-            with st.sidebar.expander("Debug Information", expanded=True):
-                st.write("Last Query:", st.session_state.last_query)
-                st.write("Is Processing:", st.session_state.is_processing)
-                st.write("Retry Count:", st.session_state.retry_count)
-                
-                # Add manual retry button
-                if st.button("Retry Last Query"):
-                    if st.session_state.last_query:
-                        # Remove last response if it exists
-                        if len(st.session_state.chat_history) >= 2 and st.session_state.chat_history[-1]['role'] == 'assistant':
-                            st.session_state.chat_history.pop()
-                        
-                        # Set processing to true to retry
-                        st.session_state.is_processing = True
-                        st.rerun()
-                
-                # Add history viewer
-                st.write("Chat History Length:", len(st.session_state.chat_history))
-                view_history = st.checkbox("View Full History")
-                if view_history:
-                    for i, msg in enumerate(st.session_state.chat_history):
-                        st.text(f"{i}: {msg['role']} - {msg['content'][:50]}...")
         
         # Add a subtle hint for session search
         st.markdown("""

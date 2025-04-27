@@ -2,10 +2,14 @@
 from pymongo import MongoClient
 import json
 import os
+import sys
 from datetime import datetime
-import config
 import time
 from functools import lru_cache
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 
 class DatabaseManager:
     def __init__(self):
@@ -158,8 +162,7 @@ class DatabaseManager:
             current_time - self.last_refresh > config.CACHE_TTL):
             # Refresh the cache
             self.sessions_cache = list(self.sessions_collection.find(
-                {"meta_data.is_deleted": {"$ne": True}},  # Skip deleted sessions
-                {'_id': 0}
+                {}, {'_id': 0}
             ).sort("meta_data.created_at", -1).limit(config.MAX_CACHE_ITEMS))
             self.last_refresh = current_time
     
@@ -186,44 +189,23 @@ class DatabaseManager:
     def get_recent_sessions(self, limit=10):
         """Get most recent sessions"""
         return list(self.sessions_collection.find(
-            {"meta_data.is_deleted": {"$ne": True}},
+            {},
             {'_id': 0}
         ).sort("meta_data.created_at", -1).limit(limit))
     
     def save_chat_history(self, user_id, conversation):
-        """Save user chat history with batching"""
+        """Save user chat history"""
         try:
-            # Batch updates to reduce DB operations
-            if 'pending_conversations' not in self.__dict__:
-                self.pending_conversations = {}
-            
-            if user_id not in self.pending_conversations:
-                self.pending_conversations[user_id] = []
-            
-            self.pending_conversations[user_id].append(conversation)
-            
-            # Flush to DB if we have enough items or enough time has passed
-            if len(self.pending_conversations[user_id]) >= 5:
-                self._flush_conversations(user_id)
-                
+            # Store the conversation with timestamp
+            self.user_history_collection.update_one(
+                {'user_id': user_id},
+                {'$push': {'conversations': conversation}},
+                upsert=True
+            )
             return True
         except Exception as e:
             print(f"Error saving chat history: {e}")
             return False
-    
-    def _flush_conversations(self, user_id):
-        """Flush pending conversations to the database"""
-        if user_id in self.pending_conversations and self.pending_conversations[user_id]:
-            try:
-                conversations = self.pending_conversations[user_id]
-                self.user_history_collection.update_one(
-                    {'user_id': user_id},
-                    {'$push': {'conversations': {'$each': conversations}}},
-                    upsert=True
-                )
-                self.pending_conversations[user_id] = []
-            except Exception as e:
-                print(f"Error flushing conversations: {e}")
     
     def get_user_history(self, user_id, limit=20):
         """Retrieve limited user chat history to reduce memory usage"""
@@ -232,19 +214,9 @@ class DatabaseManager:
             # Return only the most recent conversations
             return user_record['conversations'][-limit:]
         return []
-    
-    def flush_all_pending(self):
-        """Flush all pending conversations to DB"""
-        if hasattr(self, 'pending_conversations'):
-            for user_id in self.pending_conversations:
-                self._flush_conversations(user_id)
 
 # Initialize a global instance
 db_manager = DatabaseManager()
-
-# Register cleanup handler
-import atexit
-atexit.register(db_manager.flush_all_pending)
 
 # Convenience functions
 def get_all_sessions():

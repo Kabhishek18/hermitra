@@ -73,37 +73,26 @@ def start_mongodb():
         print(f"Error starting MongoDB: {e}")
         return False
 
-def setup_environment():
-    """Set up optimized environment variables for Python and Streamlit"""
-    # Performance optimizations for Python
-    os.environ["PYTHONHASHSEED"] = "0"  # Consistent hash seed
-    
-    # Memory optimizations
-    os.environ["PYTHONUNBUFFERED"] = "1"  # Unbuffered stdout/stderr
-    os.environ["PYTHONTRACEMALLOC"] = "0"  # Disable tracemalloc
-    
-    # Streamlit optimizations
-    os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
-    os.environ["STREAMLIT_SERVER_ENABLE_STATIC_SERVING"] = "true"
-    
-    # Sentence Transformers optimizations
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Avoid deadlocks
-
 def start_app():
-    """Start the Streamlit app with optimized settings"""
+    """Start the Streamlit app"""
     print("Starting ASHA application...")
     
-    setup_environment()
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
     
-    # Enable memory monitoring
-    from utils.memory_monitor import start_monitoring
-    start_monitoring()
+    # Check if sample data exists
+    if not has_sample_data():
+        print("\nNo sample sessions found. Adding sample data...")
+        try:
+            from add_sample_sessions import create_sample_sessions
+            create_sample_sessions()
+        except Exception as e:
+            print(f"Error adding sample data: {e}")
     
     # Start Streamlit
     streamlit_cmd = [
         "streamlit", "run", "app.py",
         "--server.port", "8501",
-        "--server.maxUploadSize", "10",
         "--browser.gatherUsageStats", "false"
     ]
     
@@ -111,10 +100,18 @@ def start_app():
         subprocess.run(streamlit_cmd)
     except KeyboardInterrupt:
         print("\nShutting down ASHA application...")
-    finally:
-        # Clean up
-        from utils.memory_monitor import stop_monitoring
-        stop_monitoring()
+
+def has_sample_data():
+    """Check if the database has sample data"""
+    try:
+        from pymongo import MongoClient
+        import config
+        client = MongoClient(config.MONGO_URI)
+        db = client[config.MONGO_DB]
+        sessions_collection = db[config.MONGO_SESSIONS_COLLECTION]
+        return sessions_collection.count_documents({}) > 0
+    except:
+        return False
 
 if __name__ == "__main__":
     # Check and start required services

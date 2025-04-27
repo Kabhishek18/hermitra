@@ -1,9 +1,14 @@
 # asha/utils/ollama.py
 import requests
 import json
-import config
+import sys
+import os
 import time
 from functools import lru_cache
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 
 class OllamaClient:
     def __init__(self, model=config.OLLAMA_MODEL, host=config.OLLAMA_HOST):
@@ -37,7 +42,7 @@ class OllamaClient:
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 # Add context size limit to prevent unnecessary memory usage
-                "num_ctx": 2048
+                "num_ctx": config.MAX_CONTEXT_SIZE
             }
         }
         
@@ -70,7 +75,7 @@ class OllamaClient:
 ollama_client = OllamaClient()
 
 # Convenience function with caching for common queries
-def generate_text(prompt, system_prompt=None, max_tokens=1000, temperature=0.7):
+def generate_text(prompt, system_prompt=None, max_tokens=config.MAX_RESPONSE_TOKENS, temperature=0.7):
     """Generate text with caching for common prompts"""
     # For common system prompts, use caching
     if len(prompt) < 1000 and (system_prompt is None or len(system_prompt) < 500):

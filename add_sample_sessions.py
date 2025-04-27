@@ -163,6 +163,17 @@ def create_sample_sessions():
         }
     ]
     
+    # Check if sessions already exist
+    existing_count = sessions_collection.count_documents({})
+    if existing_count > 0:
+        print(f"Found {existing_count} existing sessions in the database.")
+        option = input("Do you want to clear existing sessions before adding samples? (y/n): ")
+        if option.lower() == 'y':
+            sessions_collection.delete_many({})
+            print("Cleared existing sessions.")
+        else:
+            print("Keeping existing sessions.")
+    
     # Insert sample sessions
     try:
         # Add sessions

@@ -1,21 +1,23 @@
 # asha/engines/session_recommender.py
 import sys
 import os
+import re
+import json
+from datetime import datetime
+from functools import lru_cache
+
+# Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.vector_store import vector_store
-from utils.db import get_all_sessions
-import config
-import json
-import re
-from functools import lru_cache
+from utils.db import get_all_sessions, get_recent_sessions
 
 class SessionRecommender:
     def __init__(self):
-        # Get all sessions only once during initialization
+        # Load sessions data
         self.sessions = get_all_sessions()
         
-        # Process session data for recommendation
+        # Process sessions for recommendation
         if self.sessions:
             self._preprocess_sessions()
             self._build_index()
@@ -38,11 +40,16 @@ class SessionRecommender:
     
     def _extract_text_from_lexical(self, node, text_parts):
         """Recursively extract text from Lexical editor JSON structure"""
-        if 'children' in node:
-            for child in node['children']:
-                if 'text' in child:
-                    text_parts.append(child['text'])
-                self._extract_text_from_lexical(child, text_parts)
+        if isinstance(node, dict):
+            if 'text' in node:
+                text_parts.append(node['text'])
+                
+            if 'children' in node:
+                for child in node['children']:
+                    self._extract_text_from_lexical(child, text_parts)
+        elif isinstance(node, list):
+            for item in node:
+                self._extract_text_from_lexical(item, text_parts)
     
     def _preprocess_sessions(self):
         """Preprocess session data to extract and clean text"""
@@ -88,9 +95,6 @@ class SessionRecommender:
                 print("No processed sessions available to build index")
                 return
                 
-            # Print some debugging info
-            print(f"Building index with {len(self.session_texts)} session texts")
-            
             # Create the index
             vector_store.create_index(self.session_texts, self.processed_sessions)
             print("Session index built successfully")
@@ -99,7 +103,7 @@ class SessionRecommender:
             import traceback
             traceback.print_exc()
     
-    @lru_cache(maxsize=64)
+    @lru_cache(maxsize=32)
     def recommend_sessions(self, query, top_k=3):
         """Recommend sessions based on a query with caching"""
         # For very short queries, don't do vector search
@@ -112,3 +116,175 @@ class SessionRecommender:
         recommendations = [result['item'] for result in results]
         
         return recommendations
+    
+    def search_sessions(self, search_params, max_results=5):
+        """
+        Search sessions with specific criteria
+        
+        Args:
+            search_params: Dictionary with search parameters
+              - title: keywords for title search
+              - host: keywords for host name search
+              - description: keywords for description search
+            max_results: Maximum number of results to return
+            
+        Returns:
+            List of matching session objects
+        """
+        if not self.sessions:
+            return []
+            
+        # Get search parameters
+        title_query = search_params.get('title', '').lower() if search_params.get('title') else None
+        host_query = search_params.get('host', '').lower() if search_params.get('host') else None
+        description_query = search_params.get('description', '').lower() if search_params.get('description') else None
+        
+        # If no search parameters, return recent sessions
+        if not title_query and not host_query and not description_query:
+            return self.processed_sessions[:max_results] if self.processed_sessions else []
+        
+        matching_sessions = []
+        
+        for session in self.processed_sessions:
+            # Default to True, and set to False if any criteria fails
+            matches = True
+            
+            # Check title
+            if title_query and matches:
+                session_title = session.get('session_title', '').lower()
+                if title_query not in session_title:
+                    matches = False
+            
+            # Check host name
+            if host_query and matches:
+                host_found = False
+                host_users = session.get('host_user', [])
+                for host_user in host_users:
+                    username = host_user.get('username', '').lower()
+                    if host_query in username:
+                        host_found = True
+                        break
+                if not host_found:
+                    matches = False
+            
+            # Check description
+            if description_query and matches:
+                session_desc = self._extract_description_text(session.get('description', '')).lower()
+                if description_query not in session_desc:
+                    matches = False
+            
+            # If all checks passed, add to results
+            if matches:
+                matching_sessions.append(session)
+                
+        # Limit results
+        return matching_sessions[:max_results]
+    
+    def extract_search_params_from_query(self, query):
+        """
+        Extract search parameters from a natural language query
+        
+        Args:
+            query: The natural language query
+            
+        Returns:
+            Dictionary of search parameters
+        """
+        search_params = {}
+        query_lower = query.lower()
+        
+        # Extract host name
+        host_patterns = [
+            r'by\s+([a-zA-Z\s]+)',
+            r'host(?:ed)?\s+by\s+([a-zA-Z\s]+)',
+            r'with\s+([a-zA-Z\s]+)',
+            r'from\s+([a-zA-Z\s]+)'
+        ]
+        
+        for pattern in host_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                host = match.group(1).strip()
+                search_params['host'] = host
+                break
+        
+        # Extract topic/title
+        title_patterns = [
+            r'about\s+([a-zA-Z\s]+)',
+            r'on\s+([a-zA-Z\s]+)',
+            r'related\s+to\s+([a-zA-Z\s]+)'
+        ]
+        
+        for pattern in title_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                title = match.group(1).strip()
+                search_params['title'] = title
+                search_params['description'] = title  # Search in both fields
+                break
+        
+        # If no specific patterns matched, try to extract keywords
+        if not search_params:
+            # Remove common words
+            common_words = ['sessions', 'session', 'find', 'search', 'looking', 'for', 'me', 'the', 'a', 'an']
+            words = query_lower.split()
+            keywords = [word for word in words if word not in common_words and len(word) > 3]
+            
+            if keywords:
+                search_params['title'] = ' '.join(keywords)
+                search_params['description'] = ' '.join(keywords)
+        
+        return search_params
+    
+    def format_session_recommendations(self, sessions, query=""):
+        """
+        Format session recommendations as a readable message
+        
+        Args:
+            sessions: List of session objects
+            query: The original query (optional)
+            
+        Returns:
+            Formatted text
+        """
+        if not sessions:
+            return "I couldn't find any relevant sessions for your query. You can try another search with different keywords."
+        
+        response = f"I found {len(sessions)} sessions that might interest you:\n\n"
+        
+        for i, session in enumerate(sessions):
+            title = session.get('session_title', 'Untitled Session')
+            
+            # Format host information
+            host_info = "Unknown host"
+            host_users = session.get('host_user', [])
+            if host_users and len(host_users) > 0:
+                host_info = host_users[0].get('username', 'Unknown host')
+            
+            # Format date if available
+            date_info = ""
+            schedule = session.get('schedule', {})
+            if schedule and 'start_time' in schedule:
+                start_time = schedule['start_time']
+                if isinstance(start_time, str):
+                    for fmt in ["%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ"]:
+                        try:
+                            dt = datetime.strptime(start_time, fmt)
+                            date_info = f" | 📅 {dt.strftime('%Y-%m-%d %H:%M')}"
+                            break
+                        except:
+                            continue
+            
+            # Format session entry
+            response += f"**{i+1}. {title}**\n"
+            response += f"👤 Host: {host_info} | ⏱️ Duration: {session.get('duration', 'N/A')}{date_info}\n"
+            
+            # Add URL if available
+            if 'external_url' in session and session['external_url']:
+                response += f"🔗 [Join Session]({session['external_url']})\n"
+            
+            # Add separator between sessions
+            if i < len(sessions) - 1:
+                response += "\n"
+        
+        return response
