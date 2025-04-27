@@ -10,9 +10,10 @@ import traceback
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import modules
-from engines.career_guidance import CareerGuidanceEngine
-from engines.session_recommender import SessionRecommender
+from engines.career_guidance import CareerGuidanceEngine  # Use consolidated version
+from engines.session_recommender import SessionRecommender  # Use consolidated version
 from components.chat_interface import ChatInterface
+from components.session_browser import SessionBrowser 
 from utils.db import save_chat_history
 from utils.ollama import ollama_client
 import config
