@@ -1,6 +1,36 @@
-# ASHA Chatbot
+# ASHA Chatbot: Project Overview
 
-ASHA is a specialized AI chatbot designed to provide tailored career guidance for women professionals.
+## Executive Summary
+
+ASHA is an AI-powered career guidance chatbot specifically designed for women professionals. The solution combines personalized career guidance with community engagement features through a session recommendation system. This document outlines the project's key components, technical architecture, implementation plan, and expected outcomes.
+
+## Project Vision
+
+ASHA aims to address the unique challenges faced by women in the workplace by providing:
+1. Tailored career advice that considers gender-specific workplace dynamics
+2. Community connection through relevant professional development sessions
+3. An always-available mentor that understands career progression challenges for women
+
+## Key Features & Capabilities
+
+### 1. Personalized Career Guidance
+- Resume review and optimization recommendations
+- Interview preparation and confidence-building techniques
+- Salary negotiation strategies specifically for women
+- Career transition pathways with skills gap analysis
+- Leadership development advice for women professionals
+
+### 2. Session Recommendation System
+- Integration with women's professional community events
+- Personalized recommendations based on career goals and interests
+- Access to recorded sessions and learning resources
+- Connection to mentorship opportunities and networking events
+
+### 3. Technical Differentiators
+- **Gender Bias Mitigation**: AI designed to avoid reinforcing stereotypes
+- **Contextual Understanding**: Maintains conversation history for personalized advice
+- **Local Processing**: Runs entirely on local hardware for enhanced privacy
+- **Ethical Guardrails**: Clear boundaries on advice topics with transparent limitations
 
 ## Features
 
