@@ -1,59 +1,67 @@
 """
-ASHA - AI-powered career guidance chatbot for women professionals.
-This is the main Streamlit application that provides the user interface.
-Optimized for better performance and resource usage.
+ASHA - Optimized AI-powered career guidance chatbot for women professionals.
+This enhanced version features multi-threading, improved file handling, and memory optimization.
 """
 
 import streamlit as st
-from datetime import datetime
-import sys
+from datetime import datetime, timedelta
 import os
 import time
 import threading
 import base64
+import gc
+import uuid
+from PIL import Image
+import io
 
 # Import core functionality with performance optimizations
 from core import (
     get_database_connection, hash_password, verify_password, is_valid_email,
     generate_session_token, decode_session_token, detect_gender_from_image,
-    AshaBot, SessionRecommender, save_chat_history, check_mongodb_running,
-    optimize_memory, ObjectId
+    AshaBot, SessionRecommender, ObjectId
 )
 
-# Global performance settings and resource monitors
-MEMORY_CHECK_INTERVAL = 300  # Check memory usage every 5 minutes
-MEMORY_MONITOR_ENABLED = True
-last_memory_check = time.time()
+# Import optimized components
+from optimized_chat import chat_interface, ChatManager
+from performance_optimization import (
+    start_memory_monitoring, stop_memory_monitoring, 
+    check_memory, optimize_memory, LazyLoader
+)
 
-# Initialize resources only once
-@st.cache_resource
+# Global resource management
+CHATBOT_INSTANCE = None
+RECOMMENDER_INSTANCE = None
+DB_CONNECTION = None
+CHAT_MANAGER = None
+
+# Lazy initialization functions
 def get_db_connection():
-    """Get a cached database connection"""
-    return get_database_connection()
+    """Get a database connection with lazy loading"""
+    global DB_CONNECTION
+    if DB_CONNECTION is None:
+        DB_CONNECTION = get_database_connection()
+    return DB_CONNECTION
 
-@st.cache_resource
 def get_chatbot():
-    """Get a cached chatbot instance"""
-    return AshaBot()
+    """Get a chatbot instance with lazy loading"""
+    global CHATBOT_INSTANCE
+    if CHATBOT_INSTANCE is None:
+        CHATBOT_INSTANCE = AshaBot()
+    return CHATBOT_INSTANCE
 
-@st.cache_resource
-def get_recommender(_db):
-    """Get a cached session recommender"""
-    if _db is not None:
-        return SessionRecommender(_db)
-    return None
+def get_recommender(db):
+    """Get a session recommender with lazy loading"""
+    global RECOMMENDER_INSTANCE
+    if RECOMMENDER_INSTANCE is None and db is not None:
+        RECOMMENDER_INSTANCE = SessionRecommender(db)
+    return RECOMMENDER_INSTANCE
 
-
-def memory_monitor():
-    """Background task to monitor memory usage"""
-    global last_memory_check
-    
-    current_time = time.time()
-    if current_time - last_memory_check > MEMORY_CHECK_INTERVAL:
-        memory_usage = optimize_memory()
-        if memory_usage:
-            print(f"Memory usage: {memory_usage:.1f} MB")
-        last_memory_check = current_time
+def get_chat_manager(db, chatbot, recommender):
+    """Get a chat manager with lazy loading"""
+    global CHAT_MANAGER
+    if CHAT_MANAGER is None:
+        CHAT_MANAGER = ChatManager(db, chatbot, recommender)
+    return CHAT_MANAGER
 
 # User profile functions with performance optimization
 def complete_user_profile(db, user_id):
@@ -154,19 +162,28 @@ def signup_form(db):
             photo = st.file_uploader("Upload a clear face photo", type=["jpg", "jpeg", "png"])
             
             if photo:
-                st.image(photo, width=150, caption="Uploaded Photo")
-                
-                with st.spinner("Analyzing photo..."):
-                    ai_gender, ai_confidence = detect_gender_from_image(photo)
-                
-                st.info(f"AI detected gender: {ai_gender} (Confidence: {ai_confidence:.2%})")
+                # Process image with reduced size to improve performance
+                try:
+                    img = Image.open(photo)
+                    # Resize for display
+                    max_size = (150, 150)
+                    img.thumbnail(max_size)
+                    st.image(img, caption="Uploaded Photo")
+                    
+                    with st.spinner("Analyzing photo..."):
+                        ai_gender, ai_confidence = detect_gender_from_image(photo)
+                    
+                    st.info(f"AI detected gender: {ai_gender} (Confidence: {ai_confidence:.2%})")
+                except Exception as e:
+                    st.error(f"Error processing image: {e}")
+                    ai_gender = None
+                    ai_confidence = None
         
         submit_button = st.form_submit_button("Sign Up")
         
         if submit_button:
-            # Check for resource usage
-            if MEMORY_MONITOR_ENABLED:
-                memory_monitor()
+            # Check memory usage and optimize if needed
+            check_memory()
                 
             # Validation
             if not name or not email or not password:
@@ -247,9 +264,8 @@ def login_form(db):
         submit_button = st.form_submit_button("Log In")
         
         if submit_button:
-            # Check for resource usage
-            if MEMORY_MONITOR_ENABLED:
-                memory_monitor()
+            # Check memory usage
+            check_memory()
                 
             if not email or not password:
                 st.error("Please enter both email and password.")
@@ -294,127 +310,150 @@ def login_form(db):
                 else:
                     st.error("Incorrect password.")
 
-# Chatbot interface with optimized resource usage
-def chat_interface(db, user_id, user_gender):
-    """Display chat interface for ASHA chatbot"""
-    st.header("ASHA Career Guidance")
+def session_recommendations_view(db, user_id):
+    """Display session recommendations with pagination and improved performance"""
+    st.header("Recommended Sessions For You")
     
-    # Initialize chatbot and recommender - use cache_resource to prevent creating new instances
-    if "chatbot" not in st.session_state:
-        st.session_state.chatbot = get_chatbot()
-    
-    if "recommender" not in st.session_state and db is not None:
-        st.session_state.recommender = get_recommender(_db=db)
-    
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    if db is None:
+        st.error("Database connection is not available. Cannot load recommendations.")
+        return
         
-        # Add welcome message
-        welcome_message = "Hi there! I'm ASHA, your career guidance assistant. How can I help you today with your career questions or challenges?"
-        st.session_state.messages.append({"role": "assistant", "content": welcome_message})
+    # Pagination
+    page_size = 5
+    page_num = st.session_state.get("rec_page", 0)
     
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-    
-    # Chat input
-    if prompt := st.chat_input("How can I help you with your career?"):
-        # Check for resource usage
-        if MEMORY_MONITOR_ENABLED:
-            memory_monitor()
+    # Get recommendations with pagination and caching
+    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def get_user_recommendations(user_id, page, page_size):
+        try:
+            # Get total count for pagination
+            total_recs = db.user_recommendations.count_documents({"user_id": user_id})
             
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.write(prompt)
-        
-        # Get response from chatbot
-        with st.spinner("Thinking..."):
-            response = st.session_state.chatbot.chat(prompt, user_gender)
-        
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Display assistant response
-        with st.chat_message("assistant"):
-            st.write(response)
-        
-        # Save chat history to database with rate limiting
-        if db is not None:
-            # Use a background thread to save chat history
-            def save_history_background():
-                save_chat_history(db, user_id, [
-                    {"role": msg["role"], "content": msg["content"], "timestamp": datetime.now()}
-                    for msg in st.session_state.messages
-                ])
+            # Get paginated recommendations
+            recommendations = list(db.user_recommendations.find(
+                {"user_id": user_id}
+            ).sort("relevance_score", -1).skip(page * page_size).limit(page_size))
             
-            threading.Thread(target=save_history_background).start()
-        
-        # Get session recommendations
-        if "recommender" in st.session_state:
-            with st.spinner("Finding relevant sessions..."):
-                recommendations = st.session_state.recommender.recommend_sessions(prompt, user_id)
+            # Get session details for each recommendation
+            results = []
+            for rec in recommendations:
+                session = db.sessions.find_one({"session_id": rec["session_id"]})
+                if session:
+                    results.append({
+                        "recommendation": rec,
+                        "session": session
+                    })
             
-            # Display recommendations
-            if recommendations:
-                st.sidebar.subheader("Recommended Sessions")
-                for rec in recommendations:
-                    session = rec["session"]
-                    relevance = rec["relevance_score"]
-                    
-                    with st.sidebar.expander(f"{session.get('session_title', 'Session')} ({relevance:.2%} match)"):
-                        # Extract and clean description
-                        description = session.get('description', 'No description available')
-                        if isinstance(description, dict) or description.startswith('{'):
-                            try:
-                                import json
-                                desc_data = json.loads(description)
-                                # Try to extract readable text
-                                if "root" in desc_data and "children" in desc_data["root"]:
-                                    plain_text = []
-                                    for child in desc_data["root"]["children"]:
-                                        if "children" in child:
-                                            for subchild in child["children"]:
-                                                if "text" in subchild:
-                                                    plain_text.append(subchild["text"])
-                                    if plain_text:
-                                        description = " ".join(plain_text)
-                            except:
-                                # Keep original if parsing fails
-                                pass
-                        
-                        st.write(f"**Description**: {description}")
-                        
-                        # Show session details
-                        start_time = session.get("schedule", {}).get("start_time", "Unknown")
-                        if isinstance(start_time, datetime):
-                            start_time_str = start_time.strftime("%Y-%m-%d %H:%M")
-                        else:
-                            start_time_str = "Unknown"
-                            
-                        st.write(f"**Date**: {start_time_str}")
-                        
-                        # Show host if available
-                        hosts = session.get("host_user", [])
-                        if hosts:
-                            host_names = [host.get("username", "Unknown") for host in hosts]
-                            st.write(f"**Host(s)**: {', '.join(host_names)}")
-                        
-                        # Show tags if available
-                        tags = session.get("tags", [])
-                        if tags:
-                            st.write(f"**Tags**: {', '.join(tags)}")
-                        
-                        # Watch button if url available
-                        watch_url = session.get("session_resources", {}).get("watch_url", "")
-                        if watch_url:
-                            st.markdown(f"[Watch Session]({watch_url})")
+            return results, total_recs
+        except Exception as e:
+            print(f"Error getting recommendations: {e}")
+            return [], 0
+    
+    recommendations, total_recs = get_user_recommendations(user_id, page_num, page_size)
+    
+    if not recommendations:
+        st.info("No recommendations yet. Try chatting with ASHA to get personalized session recommendations!")
+        
+        # Add a button to start a chat
+        if st.button("Start a Career Chat"):
+            st.session_state.show_chat = True
+            st.session_state.show_recommendations = False
+            st.rerun()
+            
+        return
+        
+    # Display recommendations
+    for item in recommendations:
+        rec = item["recommendation"]
+        session = item["session"]
+        
+        with st.expander(f"{session.get('session_title', 'Untitled Session')} ({rec['relevance_score']:.2%} match)"):
+            # Extract and clean description
+            description = session.get('description', 'No description available')
+            if isinstance(description, dict) or (isinstance(description, str) and description.startswith('{')):
+                try:
+                    import json
+                    desc_data = json.loads(description)
+                    # Try to extract readable text
+                    if "root" in desc_data and "children" in desc_data["root"]:
+                        plain_text = []
+                        for child in desc_data["root"]["children"]:
+                            if "children" in child:
+                                for subchild in child["children"]:
+                                    if "text" in subchild:
+                                        plain_text.append(subchild["text"])
+                        if plain_text:
+                            description = " ".join(plain_text)
+                except:
+                    # Keep original if parsing fails
+                    pass
+            
+            st.write(f"**Description**: {description}")
+            
+            # Show session details
+            start_time = session.get("schedule", {}).get("start_time", "Unknown")
+            if isinstance(start_time, datetime):
+                start_time_str = start_time.strftime("%Y-%m-%d %H:%M")
+            else:
+                start_time_str = "Unknown"
+                
+            st.write(f"**Date**: {start_time_str}")
+            
+            # Show host if available
+            hosts = session.get("host_user", [])
+            if hosts:
+                host_names = [host.get("username", "Unknown") for host in hosts]
+                st.write(f"**Host(s)**: {', '.join(host_names)}")
+            
+            # Show tags if available
+            tags = session.get("tags", [])
+            if tags:
+                st.write(f"**Tags**: {', '.join(tags)}")
+            
+            # Watch button if url available
+            watch_url = session.get("session_resources", {}).get("watch_url", "")
+            if watch_url:
+                st.markdown(f"[Watch Session]({watch_url})")
+            
+            # Mark as viewed in a background thread to avoid blocking
+            if not rec.get("user_viewed", False):
+                def mark_viewed_background(rec_id):
+                    try:
+                        db.user_recommendations.update_one(
+                            {"_id": rec_id},
+                            {"$set": {"user_viewed": True}}
+                        )
+                    except Exception as e:
+                        print(f"Error marking recommendation as viewed: {e}")
+                
+                threading.Thread(
+                    target=mark_viewed_background,
+                    args=(rec["_id"],)
+                ).start()
+    
+    # Pagination controls
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if page_num > 0:
+            if st.button("← Previous"):
+                st.session_state.rec_page = page_num - 1
+                st.rerun()
+    
+    with col2:
+        total_pages = (total_recs + page_size - 1) // page_size
+        st.write(f"Page {page_num + 1} of {max(1, total_pages)}")
+    
+    with col3:
+        if (page_num + 1) * page_size < total_recs:
+            if st.button("Next →"):
+                st.session_state.rec_page = page_num + 1
+                st.rerun()
 
 def main():
-    """Main application function"""
+    """Main application function with performance optimization"""
+    # Start memory monitor
+    start_memory_monitoring()
+    
     st.set_page_config(
         page_title="ASHA - Career Guidance for Women",
         page_icon="👩‍💼",
@@ -457,7 +496,7 @@ def main():
     st.markdown('<h1 class="main-header">ASHA</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subheader">Career Guidance for Women Professionals</p>', unsafe_allow_html=True)
     
-    # Initialize database connection with caching
+    # Lazy loading for database connection
     db = get_db_connection()
     
     # Proper check for database connection
@@ -511,7 +550,7 @@ def main():
                      width=300, caption="ASHA - Your Career Companion")
             
             st.markdown("""
-            ASHA is an AI-powered career guidance chatbot specifically designed for women professionals.
+            ASHA is an AI-powered career guidance chatbot specifically designed for women professionals. Empowering Every Woman's Journey to Success!
             
             **Key Features:**
             * Personalized career advice tailored to women's needs
@@ -560,6 +599,11 @@ def main():
             return False
         
         profile_complete = is_profile_complete(user_id)
+        
+        # Initialize core components with lazy loading
+        chatbot = get_chatbot()
+        recommender = get_recommender(db)
+        chat_manager = get_chat_manager(db, chatbot, recommender)
         
         # Sidebar
         with st.sidebar:
@@ -624,6 +668,9 @@ def main():
             
             # Logout button
             if st.button("Log Out"):
+                # Clean up resources
+                optimize_memory()
+                
                 # Clear session state
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
@@ -639,9 +686,9 @@ def main():
         if "show_recommendations" not in st.session_state:
             st.session_state.show_recommendations = False
         
-        # Chat interface
+        # Chat interface with multi-threading and improved performance
         if st.session_state.show_chat:
-            chat_interface(db, user_id, user_gender)
+            chat_interface(user_id, chat_manager, db)
         
         # Profile completion
         elif st.session_state.show_profile:
@@ -652,127 +699,21 @@ def main():
             
         # Recommendations with pagination
         elif st.session_state.show_recommendations:
-            st.header("Recommended Sessions For You")
-            
-            if db is not None:
-                # Paginate recommendations
-                page_size = 5
-                page_num = st.session_state.get("rec_page", 0)
-                
-                # Get user's recent recommendations with pagination
-                try:
-                    # Get total count for pagination
-                    total_recs = db.user_recommendations.count_documents({"user_id": user_id})
-                    
-                    recommendations = list(db.user_recommendations.find(
-                        {"user_id": user_id}
-                    ).sort("relevance_score", -1).skip(page_num * page_size).limit(page_size))
-                    
-                    if recommendations:
-                        for rec in recommendations:
-                            # Get session details
-                            session = db.sessions.find_one({"session_id": rec["session_id"]})
-                            if session:
-                                with st.expander(f"{session.get('session_title', 'Untitled Session')} ({rec['relevance_score']:.2%} match)"):
-                                    # Extract and clean description
-                                    description = session.get('description', 'No description available')
-                                    if isinstance(description, dict) or (isinstance(description, str) and description.startswith('{')):
-                                        try:
-                                            import json
-                                            desc_data = json.loads(description)
-                                            # Try to extract readable text
-                                            if "root" in desc_data and "children" in desc_data["root"]:
-                                                plain_text = []
-                                                for child in desc_data["root"]["children"]:
-                                                    if "children" in child:
-                                                        for subchild in child["children"]:
-                                                            if "text" in subchild:
-                                                                plain_text.append(subchild["text"])
-                                                if plain_text:
-                                                    description = " ".join(plain_text)
-                                        except:
-                                            # Keep original if parsing fails
-                                            pass
-                                    
-                                    st.write(f"**Description**: {description}")
-                                    
-                                    # Show session details
-                                    start_time = session.get("schedule", {}).get("start_time", "Unknown")
-                                    if isinstance(start_time, datetime):
-                                        start_time_str = start_time.strftime("%Y-%m-%d %H:%M")
-                                    else:
-                                        start_time_str = "Unknown"
-                                        
-                                    st.write(f"**Date**: {start_time_str}")
-                                    
-                                    # Show host if available
-                                    hosts = session.get("host_user", [])
-                                    if hosts:
-                                        host_names = [host.get("username", "Unknown") for host in hosts]
-                                        st.write(f"**Host(s)**: {', '.join(host_names)}")
-                                    
-                                    # Show tags if available
-                                    tags = session.get("tags", [])
-                                    if tags:
-                                        st.write(f"**Tags**: {', '.join(tags)}")
-                                    
-                                    # Watch button if url available
-                                    watch_url = session.get("session_resources", {}).get("watch_url", "")
-                                    if watch_url:
-                                        st.markdown(f"[Watch Session]({watch_url})")
-                                    
-                                    # Mark as viewed in a background thread to avoid blocking
-                                    if not rec.get("user_viewed", False):
-                                        def mark_viewed_background(rec_id):
-                                            try:
-                                                db.user_recommendations.update_one(
-                                                    {"_id": rec_id},
-                                                    {"$set": {"user_viewed": True}}
-                                                )
-                                            except Exception as e:
-                                                print(f"Error marking recommendation as viewed: {e}")
-                                        
-                                        threading.Thread(
-                                            target=mark_viewed_background,
-                                            args=(rec["_id"],)
-                                        ).start()
-                        
-                        # Pagination controls
-                        col1, col2, col3 = st.columns([1, 3, 1])
-                        with col1:
-                            if page_num > 0:
-                                if st.button("← Previous"):
-                                    st.session_state.rec_page = page_num - 1
-                                    st.rerun()
-                        
-                        with col2:
-                            total_pages = (total_recs + page_size - 1) // page_size
-                            st.write(f"Page {page_num + 1} of {max(1, total_pages)}")
-                        
-                        with col3:
-                            if (page_num + 1) * page_size < total_recs:
-                                if st.button("Next →"):
-                                    st.session_state.rec_page = page_num + 1
-                                    st.rerun()
-                        
-                    else:
-                        st.info("No recommendations yet. Try chatting with ASHA to get personalized session recommendations!")
-                        
-                        # Add a button to start a chat
-                        if st.button("Start a Career Chat"):
-                            st.session_state.show_chat = True
-                            st.session_state.show_recommendations = False
-                            st.rerun()
-                        
-                except Exception as e:
-                    st.error(f"Error retrieving recommendations: {e}")
-                    st.write("Please try refreshing the page.")
-            else:
-                st.error("Database connection required to view recommendations")
+            session_recommendations_view(db, user_id)
         
         # Footer
         st.markdown('<div class="footer">ASHA - AI-powered career guidance for women professionals © 2025</div>', 
                    unsafe_allow_html=True)
 
+    # Check memory periodically
+    if int(time.time()) % 300 == 0:  # Every 5 minutes
+        optimize_memory()
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+    finally:
+        # Ensure memory monitoring is stopped
+        stop_memory_monitoring()
