@@ -176,7 +176,7 @@ def signup_form(db):
                     token = generate_session_token(str(user_id))
                     st.session_state.token = token
                     
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error creating account: {e}")
 
@@ -229,7 +229,7 @@ def login_form(db):
                     st.session_state.token = token
                     
                     # Force a rerun to update the UI
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Incorrect password.")
 
@@ -427,7 +427,7 @@ def main():
             if st.button("Log In" if st.session_state.show_signup else "Sign Up"):
                 st.session_state.show_login = not st.session_state.show_login
                 st.session_state.show_signup = not st.session_state.show_signup
-                st.experimental_rerun()
+                st.rerun()
             
             if st.session_state.show_login:
                 login_form(db)
@@ -435,7 +435,7 @@ def main():
                 if st.button("Create an account"):
                     st.session_state.show_login = False
                     st.session_state.show_signup = True
-                    st.experimental_rerun()
+                    st.rerun()
                     
             elif st.session_state.show_signup:
                 signup_form(db)
@@ -443,7 +443,7 @@ def main():
                 if st.button("Already have an account?"):
                     st.session_state.show_login = True
                     st.session_state.show_signup = False
-                    st.experimental_rerun()
+                    st.rerun()
     
     else:
         # Main application after login
@@ -470,7 +470,7 @@ def main():
                 if st.button("Complete Profile"):
                     st.session_state.show_profile = True
                     st.session_state.show_chat = False
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 st.success("Profile complete!")
                 
@@ -516,7 +516,7 @@ def main():
                 # Clear session state
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
-                st.experimental_rerun()
+                st.rerun()
         
         # Main content area
         if "show_chat" not in st.session_state:

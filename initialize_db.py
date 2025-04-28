@@ -201,31 +201,75 @@ def create_sample_sessions(db):
                 "duration_minutes": 60,
                 "timezone": "UTC"
             },
-            "categories": ["Professional Development", "Communication Skills"],
-            "tags": ["group discussion", "remote work", "professional development"]
-        },
+            "categories": ["Professional Development", "Mental Health"],
+            "tags": ["imposter syndrome", "self-confidence", "professional growth"]
+        }
+    ]
+    
+    # Try to insert sample sessions
+    success_count = 0
+    for session in sample_sessions:
+        try:
+            # Check if session already exists
+            existing = db.sessions.find_one({"session_id": session["session_id"]})
+            if existing:
+                print(f"Session {session['session_id']} already exists, skipping.")
+                continue
+                
+            db.sessions.insert_one(session)
+            print(f"Created sample session: {session['session_title']}")
+            success_count += 1
+        except Exception as e:
+            print(f"Error creating sample session: {e}")
+    
+    print(f"Sample sessions created. Successfully added {success_count} sessions.")
+    return success_count > 0
+
+def main():
+    """Main function to initialize the database"""
+    print("Initializing ASHA database...")
+    
+    # Create directory structure if it doesn't exist
+    os.makedirs("data/raw", exist_ok=True)
+    
+    # Setup database
+    db = setup_database()
+    
+    if db is None:
+        print("Error: Database connection failed. Please check that MongoDB is running.")
+        print("You can still run the application, but functionality will be limited.")
+        return False
+    
+    # Load sessions
+    sessions_loaded = load_herkey_sessions(db)
+    
+    if sessions_loaded:
+        print("Initialization complete.")
+        return True
+    else:
+        print("Initialization completed with warnings.")
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    if not success:
+        print("Database initialization completed with errors.")
+        sys.exit(1)
+    else:
+        print("Database initialization complete.")
+        sys.exit(0)
+
+def create_sample_sessions(db):
+    """Create sample sessions when no JSON file is available"""
+    if db is None:
+        print("Database connection is not available. Cannot create sample sessions.")
+        return False
+    
+    print("Creating sample sessions...")
+    
+    sample_sessions = [
         {
-            "session_id": "1698287758043969497",
-            "session_title": "Salary Negotiation for Women Professionals",
-            "description": "Strategies and techniques for effective salary negotiation in male-dominated industries",
-            "session_resources": {
-                "discussion_image_url": "https://example.com/salary-negotiation.jpg",
-                "watch_url": "https://example.com/watch/salary-negotiation"
-            },
-            "host_user": [
-                {
-                    "user_id": 3969497,
-                    "username": "Priya M",
-                    "role": "host"
-                }
-            ],
-            "schedule": {
-                "start_time": datetime.datetime.now() + datetime.timedelta(days=14),
-                "end_time": datetime.datetime.now() + datetime.timedelta(days=14, hours=1, minutes=30),
-                "duration_minutes": 90,
-                "timezone": "UTC"
-            },
-            "categories": ["Career Development", "Leadership"],
+            "session_id": "1698287758043969496",
             "tags": ["salary negotiation", "women in tech", "career growth"]
         },
         {
@@ -297,57 +341,6 @@ def create_sample_sessions(db):
                 "duration_minutes": 60,
                 "timezone": "UTC"
             },
-            "categories": ["Professional Development", "Mental Health"],
-            "tags": ["imposter syndrome", "self-confidence", "professional growth"]
-        }
-    ]
-    
-    # Try to insert sample sessions
-    success_count = 0
-    for session in sample_sessions:
-        try:
-            # Check if session already exists
-            existing = db.sessions.find_one({"session_id": session["session_id"]})
-            if existing:
-                print(f"Session {session['session_id']} already exists, skipping.")
-                continue
-                
-            db.sessions.insert_one(session)
-            print(f"Created sample session: {session['session_title']}")
-            success_count += 1
-        except Exception as e:
-            print(f"Error creating sample session: {e}")
-    
-    print(f"Sample sessions created. Successfully added {success_count} sessions.")
-    return success_count > 0
-
-def main():
-    """Main function to initialize the database"""
-    print("Initializing ASHA database...")
-    
-    # Create directory structure if it doesn't exist
-    os.makedirs("data/raw", exist_ok=True)
-    
-    # Setup database
-    db = setup_database()
-    
-    if db is None:
-        print("Error: Database connection failed. Please check that MongoDB is running.")
-        print("You can still run the application, but functionality will be limited.")
-        return False
-    
-    # Load sessions
-    sessions_loaded = load_herkey_sessions(db)
-    
-    if sessions_loaded:
-        print("Initialization complete.")
-        return True
-    else:
-        print("Initialization completed with warnings.")
-        return False
-
-if __name__ == "__main__":
-    success = main()
-    if not success:
-        print("Database initialization completed with errors.")
-        sys.exit(1)
+            "categories": ["Professional Development", "Communication Skills"],
+            "tags": ["group discussion", "remote work", "professional development"]
+        }]

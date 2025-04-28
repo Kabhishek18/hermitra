@@ -20,10 +20,21 @@ import requests
 import uuid
 import sys
 from typing import Dict, List, Tuple, Optional, Any, Union
+# Correct import for MongoDB's ObjectId
 from bson.objectid import ObjectId
 import pymongo
 from pymongo import MongoClient
 from PIL import Image
+
+# Import torch safely using lazy loading to prevent Streamlit conflicts
+# This is a simplified version - in production we would use the torch_isolation module
+def safe_import(module_name):
+    """Safely import a module that might conflict with Streamlit"""
+    try:
+        return __import__(module_name)
+    except Exception as e:
+        print(f"Warning: Could not import {module_name}: {e}")
+        return None
 
 # Check and import AI-related libraries
 try:
@@ -36,7 +47,7 @@ except ImportError:
 
 # AI gender detection imports
 try:
-    from deepface import DeepFace
+    # We defer loading DeepFace until needed to avoid Streamlit conflicts
     DEEPFACE_AVAILABLE = True
 except ImportError:
     DEEPFACE_AVAILABLE = False
@@ -180,6 +191,10 @@ def detect_gender_from_image(image_file) -> Tuple[str, float]:
         return detected_gender, confidence
     
     try:
+        # Only import DeepFace when actually needed
+        # This prevents Streamlit from monitoring it during startup
+        from deepface import DeepFace
+        
         # Convert uploaded file to image for processing
         image_bytes = image_file.getvalue()
         image = Image.open(io.BytesIO(image_bytes))
