@@ -209,3 +209,151 @@ def check_memory():
 def optimize_memory():
     """Force memory optimization"""
     return memory_monitor.optimize_memory()
+
+# Enhanced database connection management
+class DbConnectionManager:
+    """Manage database connections with connection pooling and retry logic"""
+    
+    def __init__(self, connection_string="mongodb://localhost:27017/", db_name="asha_db"):
+        self.connection_string = connection_string
+        self.db_name = db_name
+        self.client = None
+        self.db = None
+        self.last_used = time.time()
+        self.lock = threading.RLock()
+    
+    def get_connection(self):
+        """Get a database connection with retry logic"""
+        with self.lock:
+            # Update last used time
+            self.last_used = time.time()
+            
+            # Check if connection exists and is valid
+            if self.client and self.db:
+                try:
+                    # Verify connection is still active
+                    self.client.admin.command('ping')
+                    return self.db
+                except Exception:
+                    # Connection is invalid, close it
+                    self.close()
+            
+            # Create new connection with retry
+            retry_count = 0
+            max_retries = 3
+            
+            while retry_count < max_retries:
+                try:
+                    from pymongo import MongoClient
+                    
+                    # Create connection with optimal settings
+                    self.client = MongoClient(
+                        self.connection_string,
+                        maxPoolSize=10,
+                        minPoolSize=1,
+                        connectTimeoutMS=5000,
+                        socketTimeoutMS=10000,
+                        serverSelectionTimeoutMS=5000,
+                        waitQueueTimeoutMS=5000,
+                        retryWrites=True,
+                        retryReads=True
+                    )
+                    
+                    # Test connection
+                    self.client.admin.command('ping')
+                    
+                    # Get database
+                    self.db = self.client[self.db_name]
+                    
+                    print(f"Successfully connected to MongoDB: {self.db_name}")
+                    return self.db
+                
+                except Exception as e:
+                    retry_count += 1
+                    wait_time = retry_count * 2  # Exponential backoff
+                    print(f"Database connection failed (attempt {retry_count}/{max_retries}): {str(e)}")
+                    
+                    if retry_count < max_retries:
+                        print(f"Retrying in {wait_time} seconds...")
+                        time.sleep(wait_time)
+                    else:
+                        print("Max retries reached. Could not establish database connection.")
+                        return None
+    
+    def close(self):
+        """Close the database connection"""
+        with self.lock:
+            if self.client:
+                try:
+                    self.client.close()
+                    self.client = None
+                    self.db = None
+                    print("Database connection closed")
+                except Exception as e:
+                    print(f"Error closing database connection: {e}")
+
+# Optimized file loader with caching
+class FileCache:
+    """Cache file contents to avoid repeated disk reads"""
+    
+    def __init__(self, max_size=50, ttl=3600):
+        self.cache = {}
+        self.max_size = max_size
+        self.ttl = ttl
+        self.lock = threading.RLock()
+    
+    def get(self, file_path):
+        """Get file content from cache or load from disk"""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        with self.lock:
+            current_time = time.time()
+            file_stat = os.stat(file_path)
+            file_key = f"{file_path}:{file_stat.st_mtime}"
+            
+            # Check if file is in cache and not expired
+            if file_key in self.cache:
+                cache_item = self.cache[file_key]
+                
+                # Check if cache entry is still valid
+                if current_time - cache_item["timestamp"] < self.ttl:
+                    # Update timestamp
+                    cache_item["timestamp"] = current_time
+                    return cache_item["data"]
+            
+            # Load file from disk
+            with open(file_path, 'rb') as f:
+                data = f.read()
+            
+            # Add to cache
+            self.cache[file_key] = {
+                "data": data,
+                "timestamp": current_time,
+                "size": len(data)
+            }
+            
+            # Clean cache if needed
+            self._clean_cache()
+            
+            return data
+    
+    def _clean_cache(self):
+        """Clean cache if size exceeds max_size"""
+        if len(self.cache) > self.max_size:
+            # Find oldest entries
+            sorted_items = sorted(
+                self.cache.items(),
+                key=lambda x: x[1]["timestamp"]
+            )
+            
+            # Remove oldest entries
+            to_remove = len(self.cache) - self.max_size
+            for i in range(to_remove):
+                key = sorted_items[i][0]
+                del self.cache[key]
+    
+    def clear(self):
+        """Clear the entire cache"""
+        with self.lock:
+            self.cache.clear()

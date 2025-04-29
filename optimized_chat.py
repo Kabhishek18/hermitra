@@ -1,6 +1,6 @@
 """
-ASHA Chat - Optimized chat component for ASHA career guidance chatbot
-Handles multiple chat threads with improved performance
+Enhanced chat interface module for the ASHA chatbot
+Provides improved UI and performance for the chat functionality
 """
 
 import streamlit as st
@@ -217,6 +217,16 @@ class ChatManager:
             
             return message
     
+    def rename_thread(self, thread_id, user_id, new_title):
+        """Rename a chat thread"""
+        thread = self.get_thread(thread_id, user_id)
+        if not thread:
+            return False
+        
+        thread.title = new_title
+        self._save_thread(thread)
+        return True
+    
     def archive_thread(self, thread_id, user_id):
         """Archive a chat thread"""
         thread = self.get_thread(thread_id, user_id)
@@ -231,16 +241,6 @@ class ChatManager:
             if thread_id in self.active_threads:
                 del self.active_threads[thread_id]
         
-        return True
-    
-    def rename_thread(self, thread_id, user_id, new_title):
-        """Rename a chat thread"""
-        thread = self.get_thread(thread_id, user_id)
-        if not thread:
-            return False
-        
-        thread.title = new_title
-        self._save_thread(thread)
         return True
     
     def _save_thread(self, thread):
@@ -379,17 +379,17 @@ def get_thread_recommendations(db, thread_id, limit=5):
         return []
 
 
-# UI Component for Chat Interface
-def chat_interface(user_id, chat_manager, db=None):
+# Enhanced Chat Interface with better UI
+def enhanced_chat_interface(user_id, chat_manager, db=None):
     """
-    Multi-threaded chat interface with optimized performance
+    Enhanced chat interface with improved UI and performance
     
     Args:
         user_id: The current user's ID
         chat_manager: ChatManager instance
         db: MongoDB database connection (optional)
     """
-    st.title("Chat with ASHA")
+    st.markdown('<h2 class="subheader">Chat with ASHA</h2>', unsafe_allow_html=True)
     
     # Initialize session state for current thread
     if "current_thread_id" not in st.session_state:
@@ -398,108 +398,207 @@ def chat_interface(user_id, chat_manager, db=None):
         thread_id = chat_manager.create_thread(user_id, user_gender)
         st.session_state.current_thread_id = thread_id
     
-    # Sidebar for thread management
-    with st.sidebar:
-        st.subheader("Your Conversations")
+    # Enhanced layout with better visual hierarchy
+    col1, col2 = st.columns([1, 3])
+    
+    # Thread management sidebar
+    with col1:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<h4 style="margin-bottom: 15px;">Your Conversations</h4>', unsafe_allow_html=True)
         
-        # New chat button
-        if st.button("New Chat"):
+        # New chat button with icon
+        st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
+        if st.button("+ New Chat"):
             user_gender = st.session_state.get("user", {}).get("gender", "Woman")
             thread_id = chat_manager.create_thread(user_id, user_gender)
             st.session_state.current_thread_id = thread_id
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # List existing threads
+        # Separator
+        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+        
+        # List existing threads with improved styling
         threads = chat_manager.get_user_threads(user_id)
         
         if not threads:
             st.info("No previous conversations found.")
         else:
-            st.write("Select a conversation:")
-            
             for thread in threads:
                 # Create a unique key for each button
                 button_key = f"thread_{thread.thread_id}"
                 
                 # Highlight current thread
                 if thread.thread_id == st.session_state.current_thread_id:
-                    button_label = f"📌 {thread.title}"
+                    st.markdown(f"""
+                    <div style="padding: 8px 12px; background-color: #e9f5fe; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #FF1493;">
+                        <p style="margin: 0; font-weight: 500; color: #212529;">📌 {thread.title}</p>
+                        <p style="margin: 0; font-size: 0.75rem; color: #6c757d;">
+                            {thread.last_activity.strftime('%b %d, %I:%M %p')}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    button_label = thread.title
-                
-                if st.button(button_label, key=button_key):
-                    st.session_state.current_thread_id = thread.thread_id
-                    st.rerun()
+                    if st.button(thread.title, key=button_key):
+                        st.session_state.current_thread_id = thread.thread_id
+                        st.rerun()
+        
+        # Show archived conversations button
+        st.markdown("<div style='margin-top: 20px;'>", unsafe_allow_html=True)
+        if st.button("Show Archived Chats", key="show_archived"):
+            st.session_state.show_archived = not st.session_state.get("show_archived", False)
+            st.rerun()
+        
+        # Display archived conversations if requested
+        if st.session_state.get("show_archived", False):
+            st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+            st.markdown("<h5>Archived Conversations</h5>", unsafe_allow_html=True)
+            
+            archived_threads = chat_manager.get_user_threads(user_id, include_archived=True)
+            archived_threads = [t for t in archived_threads if t.is_archived]
+            
+            if not archived_threads:
+                st.info("No archived conversations.")
+            else:
+                for thread in archived_threads:
+                    button_key = f"archived_{thread.thread_id}"
+                    if st.button(f"🗄️ {thread.title}", key=button_key):
+                        st.session_state.current_thread_id = thread.thread_id
+                        st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Main chat area
-    current_thread = chat_manager.get_thread(st.session_state.current_thread_id, user_id)
-    
-    if not current_thread:
-        st.error("Could not load the conversation. Please start a new chat.")
-        return
-    
-    # Thread options (rename, archive)
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col1:
-        if st.button("Rename"):
-            st.session_state.show_rename = True
-    
     with col2:
-        st.markdown(f"### {current_thread.title}")
-    
-    with col3:
-        if st.button("Archive"):
-            if chat_manager.archive_thread(current_thread.thread_id, user_id):
-                # Create a new thread
-                user_gender = st.session_state.get("user", {}).get("gender", "Woman")
-                thread_id = chat_manager.create_thread(user_id, user_gender)
-                st.session_state.current_thread_id = thread_id
-                st.success("Conversation archived successfully.")
-                st.rerun()
-    
-    # Rename dialog
-    if st.session_state.get("show_rename", False):
-        with st.form("rename_form"):
-            new_title = st.text_input("New conversation title:", value=current_thread.title)
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.form_submit_button("Save"):
-                    if chat_manager.rename_thread(current_thread.thread_id, user_id, new_title):
-                        st.session_state.show_rename = False
-                        st.success("Conversation renamed successfully.")
+        current_thread = chat_manager.get_thread(st.session_state.current_thread_id, user_id)
+        
+        if not current_thread:
+            st.error("Could not load the conversation. Please start a new chat.")
+            return
+        
+        # Thread options (rename, archive) with better styling
+        st.markdown('<div class="card" style="padding: 12px;">', unsafe_allow_html=True)
+        col_title, col_actions = st.columns([3, 1])
+        
+        with col_title:
+            st.markdown(f"<h3 style='margin: 0;'>{current_thread.title}</h3>", unsafe_allow_html=True)
+        
+        with col_actions:
+            col_rename, col_archive = st.columns(2)
+            with col_rename:
+                if st.button("Rename", key="rename_btn"):
+                    st.session_state.show_rename = True
+            with col_archive:
+                if st.button("Archive", key="archive_btn"):
+                    if chat_manager.archive_thread(current_thread.thread_id, user_id):
+                        # Create a new thread
+                        user_gender = st.session_state.get("user", {}).get("gender", "Woman")
+                        thread_id = chat_manager.create_thread(user_id, user_gender)
+                        st.session_state.current_thread_id = thread_id
+                        st.success("Conversation archived successfully.")
                         st.rerun()
-            
-            with col2:
-                if st.form_submit_button("Cancel"):
-                    st.session_state.show_rename = False
-                    st.rerun()
-    
-    # Display messages with improved performance
-    message_container = st.container()
-    
-    with message_container:
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Rename dialog with improved UI
+        if st.session_state.get("show_rename", False):
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            with st.form("rename_form"):
+                st.markdown("<h4>Rename Conversation</h4>", unsafe_allow_html=True)
+                new_title = st.text_input("New conversation title:", value=current_thread.title)
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
+                    if st.form_submit_button("Save"):
+                        if chat_manager.rename_thread(current_thread.thread_id, user_id, new_title):
+                            st.session_state.show_rename = False
+                            st.success("Conversation renamed successfully.")
+                            st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown('<div class="outline-btn">', unsafe_allow_html=True)
+                    if st.form_submit_button("Cancel"):
+                        st.session_state.show_rename = False
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Display messages with enhanced styling
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        
         for message in current_thread.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-    
-    # Input for new message
-    if prompt := st.chat_input("Type your message here..."):
-        # Add user message to UI immediately
-        with st.chat_message("user"):
-            st.write(prompt)
+            role = message["role"]
+            content = message["content"]
+            
+            if "timestamp" in message:
+                timestamp = message["timestamp"].strftime("%I:%M %p")
+            else:
+                timestamp = ""
+            
+            if role == "user":
+                st.markdown(f"""
+                <div class="user-message">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-weight: 500; color: #1976D2;">You</span>
+                        <span style="font-size: 0.7rem; color: #6c757d;">{timestamp}</span>
+                    </div>
+                    {content}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="assistant-message">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-weight: 500; color: #FF1493;">ASHA</span>
+                        <span style="font-size: 0.7rem; color: #6c757d;">{timestamp}</span>
+                    </div>
+                    {content}
+                </div>
+                """, unsafe_allow_html=True)
         
-        # Add to chat manager (which will queue for processing)
-        chat_manager.add_user_message(
-            st.session_state.current_thread_id,
-            prompt,
-            user_id
-        )
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # Show "typing" indicator
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+        # Input for new message with better styling
+        st.markdown('<div style="margin-top: 16px;">', unsafe_allow_html=True)
+        
+        placeholder = "Type your career question here..."
+        if prompt := st.chat_input(placeholder):
+            # Add user message to UI immediately
+            st.markdown(f"""
+            <div class="user-message">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="font-weight: 500; color: #1976D2;">You</span>
+                    <span style="font-size: 0.7rem; color: #6c757d;">{datetime.now().strftime("%I:%M %p")}</span>
+                </div>
+                {prompt}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Add to chat manager (which will queue for processing)
+            chat_manager.add_user_message(
+                st.session_state.current_thread_id,
+                prompt,
+                user_id
+            )
+            
+            # Show "typing" indicator
+            with st.spinner():
+                st.markdown(f"""
+                <div class="assistant-message loading">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-weight: 500; color: #FF1493;">ASHA</span>
+                        <span style="font-size: 0.7rem; color: #6c757d;">{datetime.now().strftime("%I:%M %p")}</span>
+                    </div>
+                    <div style="display: flex;">
+                        <div style="height: 8px; width: 8px; background-color: #FF1493; border-radius: 50%; margin-right: 4px; opacity: 0.7;"></div>
+                        <div style="height: 8px; width: 8px; background-color: #FF1493; border-radius: 50%; margin-right: 4px; opacity: 0.5;"></div>
+                        <div style="height: 8px; width: 8px; background-color: #FF1493; border-radius: 50%; opacity: 0.3;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
                 # Wait for response to be generated (max 30 seconds)
                 for _ in range(30):
                     # Check if we have a new message
@@ -511,64 +610,57 @@ def chat_interface(user_id, chat_manager, db=None):
                 
                 # Reload the page to show the response
                 st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div style="margin-top: 20px;">', unsafe_allow_html=True)
+        st.markdown('<p style="font-size: 0.9rem; color: #6c757d; margin-bottom: 8px;">Quick questions:</p>', unsafe_allow_html=True)
+        
+        suggestion_cols = st.columns(3)
+        suggestions = [
+            "Help with my resume",
+            "Tips for salary negotiation",
+            "How to overcome imposter syndrome"
+        ]
+        
+        for i, suggestion in enumerate(suggestions):
+            if suggestion_cols[i].button(suggestion, key=f"suggestion_{i}"):
+                # Simulate clicking the chat input
+                chat_manager.add_user_message(
+                    st.session_state.current_thread_id,
+                    suggestion,
+                    user_id
+                )
+                st.rerun()
+                
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    # Display recommendations in sidebar
+    # Display recommendations in sidebar based on chat
     if db is not None:
-        with st.sidebar:
-            st.divider()
-            st.subheader("Relevant Sessions")
-            
-            # Get recommendations for this thread
-            recommendations = get_thread_recommendations(db, current_thread.thread_id)
-            
-            if not recommendations:
-                st.info("No relevant sessions found yet. Continue the conversation to get recommendations.")
-            else:
-                for rec in recommendations:
-                    session = rec["session"]
-                    relevance = rec["relevance_score"]
+        st.sidebar.markdown('<div class="card">', unsafe_allow_html=True)
+        st.sidebar.markdown('<h4 style="margin-bottom: 15px;">Related Sessions</h4>', unsafe_allow_html=True)
+        
+        # Get recommendations for this thread
+        recommendations = get_thread_recommendations(db, current_thread.thread_id)
+        
+        if not recommendations:
+            st.sidebar.info("Continue your conversation to get personalized session recommendations.")
+        else:
+            for i, rec in enumerate(recommendations):
+                session = rec["session"]
+                relevance = rec["relevance_score"]
+                
+                # Display compact recommendation cards
+                st.sidebar.markdown(f"""
+                <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid #FF1493;">
+                    <h5 style="margin: 0 0 8px 0;">{session.get('session_title', 'Session')}</h5>
+                    <div style="height: 4px; background-color: #e9ecef; border-radius: 2px; margin-bottom: 8px;">
+                        <div style="height: 100%; width: {relevance * 100}%; background-color: #FF1493; border-radius: 2px;"></div>
+                    </div>
+                    <p style="font-size: 0.8rem; margin: 0 0 8px 0;">{relevance:.0%} match • {session.get('duration', '1hr')}</p>
+                    <a href="#" style="display: inline-block; font-size: 0.8rem; color: #FF1493;">View details →</a>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.sidebar.markdown('</div>', unsafe_allow_html=True)
                     
-                    with st.expander(f"{session.get('session_title', 'Session')} ({relevance:.2%} match)"):
-                        # Extract and clean description
-                        description = session.get('description', 'No description available')
-                        if isinstance(description, dict) or (isinstance(description, str) and description.startswith('{')):
-                            try:
-                                desc_data = json.loads(description)
-                                # Try to extract readable text
-                                if "root" in desc_data and "children" in desc_data["root"]:
-                                    plain_text = []
-                                    for child in desc_data["root"]["children"]:
-                                        if "children" in child:
-                                            for subchild in child["children"]:
-                                                if "text" in subchild:
-                                                    plain_text.append(subchild["text"])
-                                    if plain_text:
-                                        description = " ".join(plain_text)
-                            except:
-                                # Keep original if parsing fails
-                                pass
-                        
-                        # Show session details
-                        st.write(f"**Description**: {description}")
-                        
-                        # Show schedule if available
-                        if "schedule" in session and "start_time" in session["schedule"]:
-                            start_time = session["schedule"]["start_time"]
-                            if isinstance(start_time, datetime):
-                                st.write(f"**Date**: {start_time.strftime('%Y-%m-%d %H:%M')}")
-                        
-                        # Show host if available
-                        hosts = session.get("host_user", [])
-                        if hosts:
-                            host_names = [host.get("username", "Unknown") for host in hosts]
-                            st.write(f"**Host(s)**: {', '.join(host_names)}")
-                        
-                        # Show tags if available
-                        tags = session.get("tags", [])
-                        if tags:
-                            st.write(f"**Tags**: {', '.join(tags)}")
-                        
-                        # Watch button if url available
-                        watch_url = session.get("session_resources", {}).get("watch_url", "")
-                        if watch_url:
-                            st.markdown(f"[Watch Session]({watch_url})")

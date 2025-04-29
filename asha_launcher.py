@@ -304,34 +304,15 @@ def handle_signal(sig, frame):
     cleanup()
     sys.exit(0)
 
-def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="ASHA Career Guidance Chatbot Launcher")
-    parser.add_argument(
-        "--init-only", 
-        action="store_true", 
-        help="Initialize database and exit without starting the application"
-    )
-    parser.add_argument(
-        "--skip-db", 
-        action="store_true", 
-        help="Skip MongoDB initialization (use if MongoDB is already running)"
-    )
-    parser.add_argument(
-        "--skip-ollama", 
-        action="store_true", 
-        help="Skip Ollama initialization (chatbot will use fallback responses)"
-    )
-    parser.add_argument(
-        "--monitor", 
-        action="store_true", 
-        help="Enable resource monitoring"
-    )
-    return parser.parse_args()
-
 def main():
     """Main function to run the ASHA application"""
-    args = parse_arguments()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="ASHA Career Guidance Chatbot Launcher")
+    parser.add_argument("--init-only", action="store_true", help="Initialize only without starting")
+    parser.add_argument("--skip-db", action="store_true", help="Skip MongoDB initialization")
+    parser.add_argument("--skip-ollama", action="store_true", help="Skip Ollama initialization")
+    parser.add_argument("--monitor", action="store_true", help="Enable resource monitoring")
+    args = parser.parse_args()
     
     print("ASHA Career Guidance Chatbot Launcher")
     print("====================================")
