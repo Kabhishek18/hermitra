@@ -818,15 +818,20 @@ def enhanced_login_form(db):
             email = st.text_input("Email", placeholder="Enter your email")
             password = st.text_input("Password", type="password", placeholder="Enter your password")
             
-            col_btn1, col_btn2 = st.columns([1, 1])
-            with col_btn1:
-                forgot_password = st.form_submit_button("Forgot Password?")
-            with col_btn2:
-                st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
-                submit_button = st.form_submit_button("Sign In")
-                st.markdown('</div>', unsafe_allow_html=True)
+            # Avoid nested columns inside form - use a simple layout instead
+            st.markdown('<div style="display: flex; gap: 10px;">', unsafe_allow_html=True)
             
-            if submit_button:
+            # Add explicit form submit buttons
+            forgot_password_btn = st.form_submit_button("Forgot Password?")
+            
+            st.markdown('<div style="flex-grow: 1;">', unsafe_allow_html=True)
+            login_btn = st.form_submit_button("Sign In")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Handle form submission
+            if login_btn:
                 # Check memory usage
                 check_memory()
                     
@@ -876,12 +881,15 @@ def enhanced_login_form(db):
                     except Exception as e:
                         st.error(f"Error during login: {e}")
                         optimize_memory()  # Clean up memory after error
+                        
+            if forgot_password_btn:
+                st.info("Please contact support to reset your password.")
     
     with col2:
         st.image("https://img.icons8.com/color/240/null/login-rounded-right--v1.png", width=100)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
+    
 # Enhanced signup form with better UI
 def enhanced_signup_form(db):
     """Display enhanced signup form with improved UI"""

@@ -500,29 +500,29 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
                         st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Rename dialog with improved UI
+        # Rename dialog with improved UI - FIXED VERSION
         if st.session_state.get("show_rename", False):
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            with st.form("rename_form"):
+            # Form without nested columns
+            with st.form(key="rename_form"):
                 st.markdown("<h4>Rename Conversation</h4>", unsafe_allow_html=True)
                 new_title = st.text_input("New conversation title:", value=current_thread.title)
-                col1, col2 = st.columns(2)
                 
-                with col1:
-                    st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
-                    if st.form_submit_button("Save"):
-                        if chat_manager.rename_thread(current_thread.thread_id, user_id, new_title):
-                            st.session_state.show_rename = False
-                            st.success("Conversation renamed successfully.")
-                            st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                # Make sure there's a submit button in the form
+                submit_button = st.form_submit_button("Save Changes")
+            
+            # Handle form submission - Note this is outside the form block
+            if submit_button:
+                if chat_manager.rename_thread(current_thread.thread_id, user_id, new_title):
+                    st.session_state.show_rename = False
+                    st.success("Conversation renamed successfully.")
+                    st.rerun()
                 
-                with col2:
-                    st.markdown('<div class="outline-btn">', unsafe_allow_html=True)
-                    if st.form_submit_button("Cancel"):
-                        st.session_state.show_rename = False
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+            # Add a cancel button outside the form
+            if st.button("Cancel", key="rename_cancel"):
+                st.session_state.show_rename = False
+                st.rerun()
+                
             st.markdown('</div>', unsafe_allow_html=True)
         
         # Display messages with enhanced styling
@@ -663,4 +663,3 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
                 """, unsafe_allow_html=True)
         
         st.sidebar.markdown('</div>', unsafe_allow_html=True)
-                    
