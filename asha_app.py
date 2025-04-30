@@ -113,7 +113,7 @@ def apply_enhanced_ui():
     
     /* Global styles */
     .main .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1rem;
         max-width: 1200px;
     }
     
@@ -137,189 +137,103 @@ def apply_enhanced_ui():
         -webkit-text-fill-color: transparent;
         background-clip: text;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
         padding: 0.5rem 0;
     }
     
     .subheader {
-        font-size: 1.5rem;
+        font-size: 1.2rem;
         color: var(--secondary-color);
         margin-bottom: 0.5rem;
         font-weight: 500;
+        text-align: center;
     }
     
     /* Card component */
     .card {
         background-color: white;
         border-radius: 10px;
-        padding: 1.5rem;
-        box-shadow: var(--card-shadow);
-        margin-bottom: 1rem;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    
-    .card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--hover-shadow);
-    }
-    
-    /* Button styles */
-    .stButton>button {
-        border-radius: 6px;
-        font-weight: 500;
-        transition: all 0.2s;
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    .primary-btn>button {
-        background-color: var(--primary-color) !important;
-        color: white !important;
-    }
-    
-    .secondary-btn>button {
-        background-color: var(--secondary-color) !important;
-        color: white !important;
-    }
-    
-    .outline-btn>button {
-        background-color: transparent !important;
-        border: 1px solid var(--primary-color) !important;
-        color: var(--primary-color) !important;
-    }
-    
-    /* Chat message styling */
-    .chat-container {
-        max-height: 600px;
-        overflow-y: auto;
-        padding: 1rem;
-        background-color: #f9f9f9;
-        border-radius: 10px;
-        margin-bottom: 1rem;
-    }
-    
-    .user-message {
-        background-color: #e1f5fe;
-        padding: 10px 15px;
-        border-radius: 18px 18px 18px 0;
-        margin: 10px 0;
-        max-width: 80%;
-        align-self: flex-start;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    }
-    
-    .assistant-message {
-        background-color: #f0f4f8;
-        padding: 10px 15px;
-        border-radius: 18px 18px 0 18px;
-        margin: 10px 0 10px auto;
-        max-width: 80%;
-        align-self: flex-end;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Form styling */
-    .stTextInput>div>div>input {
-        border-radius: 6px;
-    }
-    
-    .stTextArea>div>div>textarea {
-        border-radius: 6px;
-    }
-    
-    /* Profile section */
-    .profile-section {
-        padding: 1rem;
-        background-color: white;
-        border-radius: 10px;
-        box-shadow: var(--card-shadow);
-    }
-    
-    /* Recommendation cards */
-    .recommendation-card {
-        background-color: white;
-        border-radius: 10px;
         padding: 1.2rem;
         box-shadow: var(--card-shadow);
         margin-bottom: 1rem;
         transition: transform 0.2s, box-shadow 0.2s;
-        border-left: 4px solid var(--primary-color);
     }
     
-    .recommendation-card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--hover-shadow);
-    }
-    
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 16px;
-        font-size: 0.75rem;
+    /* More compact layout */
+    .stButton>button {
+        border-radius: 6px;
         font-weight: 500;
-        margin-right: 0.25rem;
-        margin-bottom: 0.25rem;
+        transition: all 0.2s;
+        margin: 0.1rem 0;
+        padding: 0.3rem 0.8rem;
     }
     
-    .badge-primary {
-        background-color: var(--primary-color);
-        color: white;
+    /* Improved sidebar styling */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e9ecef;
     }
     
-    .badge-secondary {
-        background-color: var(--secondary-color);
-        color: white;
+    /* More compact chat container */
+    .chat-container {
+        max-height: 65vh;
+        overflow-y: auto;
+        padding: 0.8rem;
+        background-color: #f9f9f9;
+        border-radius: 10px;
+        margin-bottom: 0.8rem;
     }
     
-    .badge-accent {
-        background-color: var(--accent-color);
-        color: white;
+    /* More attractive messages */
+    .user-message {
+        background-color: #e3f2fd;
+        padding: 10px 15px;
+        border-radius: 18px 18px 18px 0;
+        margin: 8px 0;
+        max-width: 85%;
+        align-self: flex-start;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        border-left: 3px solid #1976D2;
     }
     
-    /* Progress indicators */
-    .progress-container {
-        width: 100%;
-        background-color: #e9ecef;
-        border-radius: 8px;
-        height: 8px;
-        overflow: hidden;
-        margin: 0.5rem 0;
+    .assistant-message {
+        background-color: #fce4ec;
+        padding: 10px 15px;
+        border-radius: 18px 18px 0 18px;
+        margin: 8px 0 8px auto;
+        max-width: 85%;
+        align-self: flex-end;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        border-right: 3px solid #FF1493;
     }
     
-    .progress-bar {
-        height: 100%;
-        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-        border-radius: 8px;
-        transition: width 0.5s ease;
+    /* Optimize spacing */
+    .stTextInput, .stTextArea {
+        margin-bottom: 0.5rem;
     }
     
-    /* Footer styling */
-    .footer {
-        text-align: center;
-        padding: 1rem 0;
-        margin-top: 2rem;
-        font-size: 0.85rem;
-        color: #6c757d;
-        border-top: 1px solid #eee;
+    /* Hide Streamlit watermark and hamburger menu */
+    #MainMenu, footer {
+        display: none !important;
     }
     
-    /* Animation for loading */
-    @keyframes pulse {
-        0% { opacity: 0.4; }
-        50% { opacity: 0.8; }
-        100% { opacity: 0.4; }
+    /* Make error messages less intrusive */
+    .stException, .stError, .stWarning {
+        padding: 0.5rem !important;
+        margin: 0.5rem 0 !important;
     }
     
-    .loading {
-        animation: pulse 1.5s infinite;
+    /* Responsive layout for mobile */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding: 0.5rem;
+        }
+        .card {
+            padding: 0.8rem;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
-
 # Enhanced user profile with more options and better UI
 def enhanced_user_profile(db, user_id):
     """Enhanced user profile with better UI and more detailed career information"""
@@ -1036,6 +950,44 @@ def enhanced_signup_form(db):
 def main():
     """Main application function with enhanced UI and performance optimizations"""
     
+    # Performance optimization: Set smaller page size and reduce initial memory footprint
+    st.set_page_config(
+        page_title="ASHA - Career Guidance for Women",
+        page_icon="👩‍💼",
+        layout="wide",
+        initial_sidebar_state="expanded",
+        menu_items=None  # Remove hamburger menu to improve load time
+    )
+    
+    # Add session state caching for expensive operations
+    @st.cache_resource
+    def get_cached_chatbot():
+        return get_chatbot()
+    
+    @st.cache_resource
+    def get_cached_recommender(db):
+        return get_recommender(db)
+    
+    @st.cache_resource
+    def get_cached_chat_manager(db, chatbot, recommender):
+        return get_chat_manager(db, chatbot, recommender)
+    
+    # Use preloaded resources when possible
+    chatbot = get_cached_chatbot()
+    
+    # Initialize database connection with timeout
+    db = None
+    try:
+        with st.spinner("Connecting to database..."):
+            # Add a timeout to the database connection
+            db_connection_thread = threading.Thread(target=lambda: setattr(st.session_state, 'db_connection', get_db_connection()))
+            db_connection_thread.start()
+            db_connection_thread.join(timeout=5)  # 5 second timeout
+            
+            if 'db_connection' in st.session_state:
+                db = st.session_state.db_connection
+    except:
+        st.warning("Database connection timed out. Some features may be limited.") 
     # Start memory monitoring for better performance
     start_memory_monitoring()
     

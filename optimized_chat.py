@@ -380,6 +380,9 @@ def get_thread_recommendations(db, thread_id, limit=5):
 
 
 # Enhanced Chat Interface with better UI
+# In optimized_chat.py
+# Find and replace the chat interface function with a fixed version
+
 def enhanced_chat_interface(user_id, chat_manager, db=None):
     """
     Enhanced chat interface with improved UI and performance
@@ -398,11 +401,11 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
         thread_id = chat_manager.create_thread(user_id, user_gender)
         st.session_state.current_thread_id = thread_id
     
-    # Enhanced layout with better visual hierarchy
-    col1, col2 = st.columns([1, 3])
+    # Enhanced layout with better visual hierarchy - fixed columns
+    main_cols = st.columns([1, 3])
     
     # Thread management sidebar
-    with col1:
+    with main_cols[0]:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<h4 style="margin-bottom: 15px;">Your Conversations</h4>', unsafe_allow_html=True)
         
@@ -470,45 +473,70 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
         st.markdown('</div>', unsafe_allow_html=True)
     
     # Main chat area
-    with col2:
+    with main_cols[1]:
         current_thread = chat_manager.get_thread(st.session_state.current_thread_id, user_id)
         
         if not current_thread:
             st.error("Could not load the conversation. Please start a new chat.")
             return
         
-        # Thread options (rename, archive) with better styling
+        # Thread options (rename, archive) with better styling - avoid nested columns
         st.markdown('<div class="card" style="padding: 12px;">', unsafe_allow_html=True)
-        col_title, col_actions = st.columns([3, 1])
         
-        with col_title:
-            st.markdown(f"<h3 style='margin: 0;'>{current_thread.title}</h3>", unsafe_allow_html=True)
+        # Use HTML/CSS layout instead of nested columns
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;">{current_thread.title}</h3>
+            <div style="display: flex; gap: 10px;">
+                <div id="rename-btn-container"></div>
+                <div id="archive-btn-container"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col_actions:
-            col_rename, col_archive = st.columns(2)
-            with col_rename:
-                if st.button("Rename", key="rename_btn"):
-                    st.session_state.show_rename = True
-            with col_archive:
-                if st.button("Archive", key="archive_btn"):
-                    if chat_manager.archive_thread(current_thread.thread_id, user_id):
-                        # Create a new thread
-                        user_gender = st.session_state.get("user", {}).get("gender", "Woman")
-                        thread_id = chat_manager.create_thread(user_id, user_gender)
-                        st.session_state.current_thread_id = thread_id
-                        st.success("Conversation archived successfully.")
-                        st.rerun()
+        # Place buttons into the containers
+        button_col1, button_col2 = st.columns(2)
+        with button_col1:
+            if st.button("Rename", key="rename_btn"):
+                st.session_state.show_rename = True
+                
+        with button_col2:
+            if st.button("Archive", key="archive_btn"):
+                if chat_manager.archive_thread(current_thread.thread_id, user_id):
+                    # Create a new thread
+                    user_gender = st.session_state.get("user", {}).get("gender", "Woman")
+                    thread_id = chat_manager.create_thread(user_id, user_gender)
+                    st.session_state.current_thread_id = thread_id
+                    st.success("Conversation archived successfully.")
+                    st.rerun()
+        
+        # Inject button placement with JavaScript
+        st.markdown("""
+        <script>
+            // Move buttons to containers
+            const renameBtn = document.querySelector('button[kind="secondary"][data-testid="baseButton-secondary"]:not([data-testid*="archive"])');
+            const archiveBtn = document.querySelector('button[kind="secondary"][data-testid="baseButton-secondary"][data-testid*="archive"]');
+            
+            if (renameBtn) {
+                document.getElementById('rename-btn-container').appendChild(renameBtn.parentElement.parentElement);
+            }
+            if (archiveBtn) {
+                document.getElementById('archive-btn-container').appendChild(archiveBtn.parentElement.parentElement);
+            }
+        </script>
+        """, unsafe_allow_html=True)
+        
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Rename dialog with improved UI - FIXED VERSION
         if st.session_state.get("show_rename", False):
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            # Form without nested columns
-            with st.form(key="rename_form"):
-                st.markdown("<h4>Rename Conversation</h4>", unsafe_allow_html=True)
+            st.markdown("<h4>Rename Conversation</h4>", unsafe_allow_html=True)
+            
+            # Use a form without nested columns
+            with st.form("rename_form"):
                 new_title = st.text_input("New conversation title:", value=current_thread.title)
-                
-                # Make sure there's a submit button in the form
+                # Single submit button
                 submit_button = st.form_submit_button("Save Changes")
             
             # Handle form submission - Note this is outside the form block
@@ -613,10 +641,13 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
         
         st.markdown('</div>', unsafe_allow_html=True)
         
+        # Quick questions with simplified layout
         st.markdown('<div style="margin-top: 20px;">', unsafe_allow_html=True)
         st.markdown('<p style="font-size: 0.9rem; color: #6c757d; margin-bottom: 8px;">Quick questions:</p>', unsafe_allow_html=True)
         
-        suggestion_cols = st.columns(3)
+        # Use HTML layout instead of columns for suggestions
+        st.markdown('<div style="display: flex; gap: 10px; flex-wrap: wrap;">', unsafe_allow_html=True)
+        
         suggestions = [
             "Help with my resume",
             "Tips for salary negotiation",
@@ -624,18 +655,36 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
         ]
         
         for i, suggestion in enumerate(suggestions):
-            if suggestion_cols[i].button(suggestion, key=f"suggestion_{i}"):
-                # Simulate clicking the chat input
+            # Add container divs for buttons
+            st.markdown(f'<div id="suggestion-{i}-container"></div>', unsafe_allow_html=True)
+            
+            # Create buttons
+            if st.button(suggestion, key=f"suggestion_{i}"):
                 chat_manager.add_user_message(
                     st.session_state.current_thread_id,
                     suggestion,
                     user_id
                 )
                 st.rerun()
-                
+        
+        # Place buttons with JavaScript
+        st.markdown("""
+        <script>
+            // Move suggestion buttons to containers
+            const suggestionBtns = document.querySelectorAll('button[kind="secondary"][data-testid="baseButton-secondary"]');
+            for (let i = 0; i < suggestionBtns.length; i++) {
+                const container = document.getElementById(`suggestion-${i}-container`);
+                if (container && suggestionBtns[i]) {
+                    container.appendChild(suggestionBtns[i].parentElement.parentElement);
+                }
+            }
+        </script>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Display recommendations in sidebar based on chat
+    # Simplified recommendations sidebar to avoid nested columns
     if db is not None:
         st.sidebar.markdown('<div class="card">', unsafe_allow_html=True)
         st.sidebar.markdown('<h4 style="margin-bottom: 15px;">Related Sessions</h4>', unsafe_allow_html=True)
@@ -650,7 +699,7 @@ def enhanced_chat_interface(user_id, chat_manager, db=None):
                 session = rec["session"]
                 relevance = rec["relevance_score"]
                 
-                # Display compact recommendation cards
+                # Display simplified recommendation cards
                 st.sidebar.markdown(f"""
                 <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid #FF1493;">
                     <h5 style="margin: 0 0 8px 0;">{session.get('session_title', 'Session')}</h5>
